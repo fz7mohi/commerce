@@ -19,3 +19,28 @@ input,
 button {
   @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-50 dark:focus-visible:ring-neutral-600 dark:focus-visible:ring-offset-neutral-900;
 }
+
+/* app/globals.css */
+@layer utilities {
+  .hover-expand {
+    @apply transition-all duration-700 ease-in-out;
+  }
+  
+  .hover-expand:hover {
+    @apply lg:w-[60%];
+  }
+  
+  .hover-expand:not(:hover) {
+    @apply lg:w-[40%];
+  }
+}
+
+@layer utilities {
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}

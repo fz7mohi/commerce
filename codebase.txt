@@ -1,0 +1,5258 @@
+
+
+# Filename: ./middleware.ts
+# Path: /Users/admin/gp/commerce/./middleware.ts
+
+// ./middleware.ts
+
+import { withAuth } from 'next-auth/middleware';
+import { NextResponse } from 'next/server';
+
+export default withAuth(
+  function middleware(request) {
+    const { pathname } = request.nextUrl;
+    const token = request.nextauth.token;
+    const isAuthPage = pathname === '/admin/login';
+
+    // If user is on the login page and is already authenticated,
+    // redirect them to the dashboard
+    if (isAuthPage && token?.role === 'ADMIN') {
+      return NextResponse.redirect(new URL('/admin/dashboard', request.url));
+    }
+
+    // If user is trying to access admin routes and is not authenticated,
+    // or is authenticated but not an admin
+    if (pathname.startsWith('/admin') && !isAuthPage) {
+      if (!token || token.role !== 'ADMIN') {
+        const redirectUrl = new URL('/admin/login', request.url);
+        redirectUrl.searchParams.set('callbackUrl', encodeURIComponent(request.url));
+        return NextResponse.redirect(redirectUrl);
+      }
+    }
+
+    return NextResponse.next();
+  },
+  {
+    callbacks: {
+      authorized: ({ token }) => {
+        // Always allow the middleware to run
+        return true;
+      }
+    }
+  }
+);
+
+// Update matcher to be more specific
+export const config = {
+  matcher: ['/admin/:path*']
+};
+
+
+# Filename: ./types/next-auth.d.ts
+# Path: /Users/admin/gp/commerce/./types/next-auth.d.ts
+
+// ./types/next-auth.d.ts
+
+import type { DefaultSession } from 'next-auth';
+
+export type UserRole = 'ADMIN' | 'USER';
+
+declare module 'next-auth' {
+  interface Session {
+    user: {
+      id: string;
+      role: UserRole;
+    } & DefaultSession['user'];
+  }
+
+  interface User {
+    role: UserRole;
+  }
+}
+
+declare module 'next-auth/jwt' {
+  interface JWT {
+    id: string;
+    role: UserRole;
+  }
+}
+
+
+# Filename: ./app/robots.ts
+# Path: /Users/admin/gp/commerce/./app/robots.ts
+
+const baseUrl = process.env.NEXT_PUBLIC_VERCEL_URL
+  ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+  : 'http://localhost:3000';
+
+export default function robots() {
+  return {
+    rules: [
+      {
+        userAgent: '*'
+      }
+    ],
+    sitemap: `${baseUrl}/sitemap.xml`,
+    host: baseUrl
+  };
+}
+
+
+# Filename: ./app/opengraph-image.tsx
+# Path: /Users/admin/gp/commerce/./app/opengraph-image.tsx
+
+import OpengraphImage from 'components/opengraph-image';
+
+export const runtime = 'edge';
+
+export default async function Image() {
+  return await OpengraphImage();
+}
+
+
+# Filename: ./app/product/[handle]/page.tsx
+# Path: /Users/admin/gp/commerce/./app/product/[handle]/page.tsx
+
+import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+
+import { GridTileImage } from 'components/grid/tile';
+import Footer from 'components/layout/footer';
+import { Gallery } from 'components/product/gallery';
+import { ProductProvider } from 'components/product/product-context';
+import { ProductDescription } from 'components/product/product-description';
+import { HIDDEN_PRODUCT_TAG } from 'lib/constants';
+import { getProduct, getProductRecommendations } from 'lib/shopify';
+import { Image } from 'lib/shopify/types';
+import Link from 'next/link';
+import { Suspense } from 'react';
+
+export async function generateMetadata(props: {
+  params: Promise<{ handle: string }>;
+}): Promise<Metadata> {
+  const params = await props.params;
+  const product = await getProduct(params.handle);
+
+  if (!product) return notFound();
+
+  const { url, width, height, altText: alt } = product.featuredImage || {};
+  const indexable = !product.tags.includes(HIDDEN_PRODUCT_TAG);
+
+  return {
+    title: product.seo.title || product.title,
+    description: product.seo.description || product.description,
+    robots: {
+      index: indexable,
+      follow: indexable,
+      googleBot: {
+        index: indexable,
+        follow: indexable
+      }
+    },
+    openGraph: url
+      ? {
+          images: [
+            {
+              url,
+              width,
+              height,
+              alt
+            }
+          ]
+        }
+      : null
+  };
+}
+
+export default async function ProductPage(props: { params: Promise<{ handle: string }> }) {
+  const params = await props.params;
+  const product = await getProduct(params.handle);
+
+  if (!product) return notFound();
+
+  const productJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: product.title,
+    description: product.description,
+    image: product.featuredImage.url,
+    offers: {
+      '@type': 'AggregateOffer',
+      availability: product.availableForSale
+        ? 'https://schema.org/InStock'
+        : 'https://schema.org/OutOfStock',
+      priceCurrency: product.priceRange.minVariantPrice.currencyCode,
+      highPrice: product.priceRange.maxVariantPrice.amount,
+      lowPrice: product.priceRange.minVariantPrice.amount
+    }
+  };
+
+  return (
+    <ProductProvider>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(productJsonLd)
+        }}
+      />
+      <div className="mx-auto max-w-screen-2xl px-4">
+        <div className="flex flex-col rounded-lg border border-neutral-200 bg-white p-8 md:p-12 lg:flex-row lg:gap-8 dark:border-neutral-800 dark:bg-black">
+          <div className="h-full w-full basis-full lg:basis-4/6">
+            <Suspense
+              fallback={
+                <div className="relative aspect-square h-full max-h-[550px] w-full overflow-hidden" />
+              }
+            >
+              <Gallery
+                images={product.images.slice(0, 5).map((image: Image) => ({
+                  src: image.url,
+                  altText: image.altText
+                }))}
+              />
+            </Suspense>
+          </div>
+
+          <div className="basis-full lg:basis-2/6">
+            <Suspense fallback={null}>
+              <ProductDescription product={product} />
+            </Suspense>
+          </div>
+        </div>
+        <RelatedProducts id={product.id} />
+      </div>
+      <Footer />
+    </ProductProvider>
+  );
+}
+
+async function RelatedProducts({ id }: { id: string }) {
+  const relatedProducts = await getProductRecommendations(id);
+
+  if (!relatedProducts.length) return null;
+
+  return (
+    <div className="py-8">
+      <h2 className="mb-4 text-2xl font-bold">Related Products</h2>
+      <ul className="flex w-full gap-4 overflow-x-auto pt-1">
+        {relatedProducts.map((product) => (
+          <li
+            key={product.handle}
+            className="aspect-square w-full flex-none min-[475px]:w-1/2 sm:w-1/3 md:w-1/4 lg:w-1/5"
+          >
+            <Link
+              className="relative h-full w-full"
+              href={`/product/${product.handle}`}
+              prefetch={true}
+            >
+              <GridTileImage
+                alt={product.title}
+                label={{
+                  title: product.title,
+                  amount: product.priceRange.maxVariantPrice.amount,
+                  currencyCode: product.priceRange.maxVariantPrice.currencyCode
+                }}
+                src={product.featuredImage?.url}
+                fill
+                sizes="(min-width: 1024px) 20vw, (min-width: 768px) 25vw, (min-width: 640px) 33vw, (min-width: 475px) 50vw, 100vw"
+              />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+
+# Filename: ./app/search/layout.tsx
+# Path: /Users/admin/gp/commerce/./app/search/layout.tsx
+
+import Footer from 'components/layout/footer';
+import Collections from 'components/layout/search/collections';
+import FilterList from 'components/layout/search/filter';
+import { sorting } from 'lib/constants';
+import ChildrenWrapper from './children-wrapper';
+
+export default function SearchLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <div className="mx-auto flex max-w-screen-2xl flex-col gap-8 px-4 pb-4 text-black md:flex-row dark:text-white">
+        <div className="order-first w-full flex-none md:max-w-[125px]">
+          <Collections />
+        </div>
+        <div className="order-last min-h-screen w-full md:order-none">
+          <ChildrenWrapper>{children}</ChildrenWrapper>
+        </div>
+        <div className="order-none flex-none md:order-last md:w-[125px]">
+          <FilterList list={sorting} title="Sort by" />
+        </div>
+      </div>
+      <Footer />
+    </>
+  );
+}
+
+
+# Filename: ./app/search/children-wrapper.tsx
+# Path: /Users/admin/gp/commerce/./app/search/children-wrapper.tsx
+
+'use client';
+
+import { useSearchParams } from 'next/navigation';
+import { Fragment } from 'react';
+
+// Ensure children are re-rendered when the search query changes
+export default function ChildrenWrapper({ children }: { children: React.ReactNode }) {
+  const searchParams = useSearchParams();
+  return <Fragment key={searchParams.get('q')}>{children}</Fragment>;
+}
+
+
+# Filename: ./app/search/loading.tsx
+# Path: /Users/admin/gp/commerce/./app/search/loading.tsx
+
+import Grid from 'components/grid';
+
+export default function Loading() {
+  return (
+    <>
+      <div className="mb-4 h-6" />
+      <Grid className="grid-cols-2 lg:grid-cols-3">
+        {Array(12)
+          .fill(0)
+          .map((_, index) => {
+            return (
+              <Grid.Item key={index} className="animate-pulse bg-neutral-100 dark:bg-neutral-800" />
+            );
+          })}
+      </Grid>
+    </>
+  );
+}
+
+
+# Filename: ./app/search/page.tsx
+# Path: /Users/admin/gp/commerce/./app/search/page.tsx
+
+import Grid from 'components/grid';
+import ProductGridItems from 'components/layout/product-grid-items';
+import { defaultSort, sorting } from 'lib/constants';
+import { getProducts } from 'lib/shopify';
+
+export const metadata = {
+  title: 'Search',
+  description: 'Search for products in the store.'
+};
+
+export default async function SearchPage(props: {
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const searchParams = await props.searchParams;
+  const { sort, q: searchValue } = searchParams as { [key: string]: string };
+  const { sortKey, reverse } = sorting.find((item) => item.slug === sort) || defaultSort;
+
+  const products = await getProducts({ sortKey, reverse, query: searchValue });
+  const resultsText = products.length > 1 ? 'results' : 'result';
+
+  return (
+    <>
+      {searchValue ? (
+        <p className="mb-4">
+          {products.length === 0
+            ? 'There are no products that match '
+            : `Showing ${products.length} ${resultsText} for `}
+          <span className="font-bold">&quot;{searchValue}&quot;</span>
+        </p>
+      ) : null}
+      {products.length > 0 ? (
+        <Grid className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <ProductGridItems products={products} />
+        </Grid>
+      ) : null}
+    </>
+  );
+}
+
+
+# Filename: ./app/search/[collection]/opengraph-image.tsx
+# Path: /Users/admin/gp/commerce/./app/search/[collection]/opengraph-image.tsx
+
+import OpengraphImage from 'components/opengraph-image';
+import { getCollection } from 'lib/shopify';
+
+export const runtime = 'edge';
+
+export default async function Image({ params }: { params: { collection: string } }) {
+  const collection = await getCollection(params.collection);
+  const title = collection?.seo?.title || collection?.title;
+
+  return await OpengraphImage({ title });
+}
+
+
+# Filename: ./app/search/[collection]/page.tsx
+# Path: /Users/admin/gp/commerce/./app/search/[collection]/page.tsx
+
+import { getCollection, getCollectionProducts } from 'lib/shopify';
+import { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+
+import Grid from 'components/grid';
+import ProductGridItems from 'components/layout/product-grid-items';
+import { defaultSort, sorting } from 'lib/constants';
+
+export async function generateMetadata(props: {
+  params: Promise<{ collection: string }>;
+}): Promise<Metadata> {
+  const params = await props.params;
+  const collection = await getCollection(params.collection);
+
+  if (!collection) return notFound();
+
+  return {
+    title: collection.seo?.title || collection.title,
+    description:
+      collection.seo?.description || collection.description || `${collection.title} products`
+  };
+}
+
+export default async function CategoryPage(props: {
+  params: Promise<{ collection: string }>;
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
+  const { sort } = searchParams as { [key: string]: string };
+  const { sortKey, reverse } = sorting.find((item) => item.slug === sort) || defaultSort;
+  const products = await getCollectionProducts({ collection: params.collection, sortKey, reverse });
+
+  return (
+    <section>
+      {products.length === 0 ? (
+        <p className="py-3 text-lg">{`No products found in this collection`}</p>
+      ) : (
+        <Grid className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <ProductGridItems products={products} />
+        </Grid>
+      )}
+    </section>
+  );
+}
+
+
+# Filename: ./app/[page]/opengraph-image.tsx
+# Path: /Users/admin/gp/commerce/./app/[page]/opengraph-image.tsx
+
+import OpengraphImage from 'components/opengraph-image';
+import { getPage } from 'lib/shopify';
+
+export const runtime = 'edge';
+
+export default async function Image({ params }: { params: { page: string } }) {
+  const page = await getPage(params.page);
+  const title = page.seo?.title || page.title;
+
+  return await OpengraphImage({ title });
+}
+
+
+# Filename: ./app/[page]/layout.tsx
+# Path: /Users/admin/gp/commerce/./app/[page]/layout.tsx
+
+import Footer from 'components/layout/footer';
+
+export default function Layout({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <div className="w-full">
+        <div className="mx-8 max-w-2xl py-20 sm:mx-auto">{children}</div>
+      </div>
+      <Footer />
+    </>
+  );
+}
+
+
+# Filename: ./app/[page]/page.tsx
+# Path: /Users/admin/gp/commerce/./app/[page]/page.tsx
+
+import type { Metadata } from 'next';
+
+import Prose from 'components/prose';
+import { getPage } from 'lib/shopify';
+import { notFound } from 'next/navigation';
+
+export async function generateMetadata(props: {
+  params: Promise<{ page: string }>;
+}): Promise<Metadata> {
+  const params = await props.params;
+  const page = await getPage(params.page);
+
+  if (!page) return notFound();
+
+  return {
+    title: page.seo?.title || page.title,
+    description: page.seo?.description || page.bodySummary,
+    openGraph: {
+      publishedTime: page.createdAt,
+      modifiedTime: page.updatedAt,
+      type: 'article'
+    }
+  };
+}
+
+export default async function Page(props: { params: Promise<{ page: string }> }) {
+  const params = await props.params;
+  const page = await getPage(params.page);
+
+  if (!page) return notFound();
+
+  return (
+    <>
+      <h1 className="mb-8 text-5xl font-bold">{page.title}</h1>
+      <Prose className="mb-8" html={page.body} />
+      <p className="text-sm italic">
+        {`This document was last updated on ${new Intl.DateTimeFormat(undefined, {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        }).format(new Date(page.updatedAt))}.`}
+      </p>
+    </>
+  );
+}
+
+
+# Filename: ./app/sitemap.ts
+# Path: /Users/admin/gp/commerce/./app/sitemap.ts
+
+import { getCollections, getPages, getProducts } from 'lib/shopify';
+import { validateEnvironmentVariables } from 'lib/utils';
+import { MetadataRoute } from 'next';
+
+type Route = {
+  url: string;
+  lastModified: string;
+};
+
+const baseUrl = process.env.NEXT_PUBLIC_VERCEL_URL
+  ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+  : 'http://localhost:3000';
+
+export const dynamic = 'force-dynamic';
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  validateEnvironmentVariables();
+
+  const routesMap = [''].map((route) => ({
+    url: `${baseUrl}${route}`,
+    lastModified: new Date().toISOString()
+  }));
+
+  const collectionsPromise = getCollections().then((collections) =>
+    collections.map((collection) => ({
+      url: `${baseUrl}${collection.path}`,
+      lastModified: collection.updatedAt
+    }))
+  );
+
+  const productsPromise = getProducts({}).then((products) =>
+    products.map((product) => ({
+      url: `${baseUrl}/product/${product.handle}`,
+      lastModified: product.updatedAt
+    }))
+  );
+
+  const pagesPromise = getPages().then((pages) =>
+    pages.map((page) => ({
+      url: `${baseUrl}/${page.handle}`,
+      lastModified: page.updatedAt
+    }))
+  );
+
+  let fetchedRoutes: Route[] = [];
+
+  try {
+    fetchedRoutes = (await Promise.all([collectionsPromise, productsPromise, pagesPromise])).flat();
+  } catch (error) {
+    throw JSON.stringify(error, null, 2);
+  }
+
+  return [...routesMap, ...fetchedRoutes];
+}
+
+
+# Filename: ./app/layout.tsx
+# Path: /Users/admin/gp/commerce/./app/layout.tsx
+
+import { CartProvider } from 'components/cart/cart-context';
+import { Navbar } from 'components/layout/navbar';
+import { Providers } from 'components/providers/providers';
+import { WelcomeToast } from 'components/welcome-toast';
+import { GeistSans } from 'geist/font/sans';
+import { getCart } from 'lib/shopify';
+import { ensureStartsWith } from 'lib/utils';
+import { cookies } from 'next/headers';
+import { ReactNode } from 'react';
+import { Toaster } from 'sonner';
+import './globals.css';
+
+const { TWITTER_CREATOR, TWITTER_SITE, SITE_NAME } = process.env;
+const baseUrl = process.env.NEXT_PUBLIC_VERCEL_URL
+  ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+  : 'http://localhost:3000';
+const twitterCreator = TWITTER_CREATOR ? ensureStartsWith(TWITTER_CREATOR, '@') : undefined;
+const twitterSite = TWITTER_SITE ? ensureStartsWith(TWITTER_SITE, 'https://') : undefined;
+
+export const metadata = {
+  metadataBase: new URL(baseUrl),
+  title: {
+    default: SITE_NAME!,
+    template: `%s | ${SITE_NAME}`
+  },
+  robots: {
+    follow: true,
+    index: true
+  },
+  ...(twitterCreator &&
+    twitterSite && {
+      twitter: {
+        card: 'summary_large_image',
+        creator: twitterCreator,
+        site: twitterSite
+      }
+    })
+};
+
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const cartId = (await cookies()).get('cartId')?.value;
+  // Don't await the fetch, pass the Promise to the context provider
+  const cart = getCart(cartId);
+
+  return (
+    <html lang="en" className={GeistSans.variable}>
+      <body className="bg-neutral-50 text-black selection:bg-teal-300 dark:bg-neutral-900 dark:text-white dark:selection:bg-pink-500 dark:selection:text-white">
+        <CartProvider cartPromise={cart}>
+          <Navbar />
+          <main>
+            <Providers
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+            >
+              {children}
+            </Providers>
+            <Toaster closeButton />
+            <WelcomeToast />
+          </main>
+        </CartProvider>
+      </body>
+    </html>
+  );
+}
+
+
+# Filename: ./app/error.tsx
+# Path: /Users/admin/gp/commerce/./app/error.tsx
+
+'use client';
+
+export default function Error({ reset }: { reset: () => void }) {
+  return (
+    <div className="mx-auto my-4 flex max-w-xl flex-col rounded-lg border border-neutral-200 bg-white p-8 md:p-12 dark:border-neutral-800 dark:bg-black">
+      <h2 className="text-xl font-bold">Oh no!</h2>
+      <p className="my-2">
+        There was an issue with our storefront. This could be a temporary issue, please try your
+        action again.
+      </p>
+      <button
+        className="mx-auto mt-4 flex w-full items-center justify-center rounded-full bg-blue-600 p-4 tracking-wide text-white hover:opacity-90"
+        onClick={() => reset()}
+      >
+        Try Again
+      </button>
+    </div>
+  );
+}
+
+
+# Filename: ./app/api/revalidate/route.ts
+# Path: /Users/admin/gp/commerce/./app/api/revalidate/route.ts
+
+import { revalidate } from 'lib/shopify';
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  return revalidate(req);
+}
+
+
+# Filename: ./app/page.tsx
+# Path: /Users/admin/gp/commerce/./app/page.tsx
+
+// app/page.tsx
+import { Carousel } from 'components/carousel';
+import { ThreeItemGrid } from 'components/grid/three-items';
+import { HeroBanner } from 'components/HeroBanner';
+import Footer from 'components/layout/footer';
+
+export default function HomePage() {
+  return (
+    <>
+      <HeroBanner />
+      <ThreeItemGrid />
+      <Carousel />
+      <Footer />
+    </>
+  );
+}
+
+
+# Filename: ./prisma/schema.prisma
+# Path: /Users/admin/gp/commerce/./prisma/schema.prisma
+
+// prisma/schema.prisma
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          String    @default("USER")
+  loginAttempts Int       @default(0)
+  lockedUntil   DateTime?
+  lastLoginAt   DateTime?
+  accounts      Account[]
+  sessions      Session[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([email])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+# Filename: ./next-env.d.ts
+# Path: /Users/admin/gp/commerce/./next-env.d.ts
+
+/// <reference types="next" />
+/// <reference types="next/image-types/global" />
+
+// NOTE: This file should not be edited
+// see https://nextjs.org/docs/app/building-your-application/configuring/typescript for more information.
+
+
+# Filename: ./tailwind.config.ts
+# Path: /Users/admin/gp/commerce/./tailwind.config.ts
+
+// tailwind.config.ts
+
+import type { Config } from 'tailwindcss';
+import plugin from 'tailwindcss/plugin';
+
+const config: Config = {
+  content: ['./app/**/*.{js,ts,jsx,tsx}', './components/**/*.{js,ts,jsx,tsx}'],
+  darkMode: 'class',
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['var(--font-geist-sans)']
+      },
+      keyframes: {
+        fadeIn: {
+          from: { opacity: '0', transform: 'translateY(10px)' },
+          to: { opacity: '1', transform: 'translateY(0)' }
+        },
+        marquee: {
+          '0%': { transform: 'translateX(0%)' },
+          '100%': { transform: 'translateX(-100%)' }
+        },
+        blink: {
+          '0%': { opacity: '0.2' },
+          '20%': { opacity: '1' },
+          '100%': { opacity: '0.2' }
+        },
+        shake: {
+          '10%, 90%': { transform: 'translate3d(-1px, 0, 0)' },
+          '20%, 80%': { transform: 'translate3d(2px, 0, 0)' },
+          '30%, 50%, 70%': { transform: 'translate3d(-3px, 0, 0)' },
+          '40%, 60%': { transform: 'translate3d(3px, 0, 0)' }
+        },
+        slideUp: {
+          '0%': { transform: 'translateY(100%)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' }
+        },
+        slideRight: {
+          '0%': { transform: 'translateX(-100%)', opacity: '0' },
+          '100%': { transform: 'translateX(0)', opacity: '1' }
+        },
+        slideDown: {
+          '0%': { transform: 'translateY(-100%)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' }
+        },
+        glow: {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.5' }
+        },
+        gradient: {
+          '0%': { backgroundPosition: '0% 50%' },
+          '50%': { backgroundPosition: '100% 50%' },
+          '100%': { backgroundPosition: '0% 50%' }
+        },
+        'spin-slow': {
+          '0%': { transform: 'rotate(0deg)' },
+          '100%': { transform: 'rotate(360deg)' }
+        },
+        bounce: {
+          '0%, 100%': {
+            transform: 'translateY(-5%)',
+            animationTimingFunction: 'cubic-bezier(0.8, 0, 1, 1)'
+          },
+          '50%': {
+            transform: 'translateY(0)',
+            animationTimingFunction: 'cubic-bezier(0, 0, 0.2, 1)'
+          }
+        }
+      },
+      animation: {
+        fadeIn: 'fadeIn .3s ease-in-out',
+        carousel: 'marquee 60s linear infinite',
+        blink: 'blink 1.4s both infinite',
+        shake: 'shake 0.5s cubic-bezier(.36,.07,.19,.97) both',
+        slideUp: 'slideUp 0.5s ease-out',
+        slideRight: 'slideRight 0.5s ease-out',
+        slideDown: 'slideDown 0.5s ease-out',
+        glow: 'glow 2s ease-in-out infinite',
+        gradient: 'gradient 6s linear infinite',
+        'spin-slow': 'spin-slow 3s linear infinite',
+        'bounce-slow': 'bounce 3s ease-in-out infinite',
+        'pulse-slow': 'pulse 6s ease-in-out infinite'
+      },
+      backgroundImage: {
+        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
+        'gradient-conic': 'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
+        'auth-pattern': "url('/auth-pattern.svg')",
+        'grid-pattern': "url('/grid.svg')"
+      },
+      transitionProperty: {
+        height: 'height',
+        spacing: 'margin, padding'
+      },
+      scale: {
+        '98': '.98',
+        '101': '1.01',
+        '102': '1.02'
+      },
+      blur: {
+        xs: '2px'
+      },
+      borderWidth: {
+        '3': '3px'
+      },
+      maxWidth: {
+        '8xl': '88rem',
+        '9xl': '96rem'
+      },
+      zIndex: {
+        '60': '60',
+        '70': '70',
+        '80': '80',
+        '90': '90',
+        '100': '100'
+      }
+    }
+  },
+  future: {
+    hoverOnlyWhenSupported: true
+  },
+  plugins: [
+    require('@tailwindcss/container-queries'),
+    require('@tailwindcss/typography'),
+    plugin(({ matchUtilities, theme }) => {
+      matchUtilities(
+        {
+          'animation-delay': (value) => {
+            return {
+              'animation-delay': value
+            };
+          }
+        },
+        {
+          values: theme('transitionDelay')
+        }
+      );
+    }),
+    // Glass morphism utilities
+    plugin(({ addUtilities }) => {
+      addUtilities({
+        '.glass': {
+          '@apply bg-white/[.05] backdrop-blur-[2px] backdrop-saturate-[1.8]': {}
+        },
+        '.glass-light': {
+          '@apply bg-white/[.5] backdrop-blur-[2px] backdrop-saturate-[1.8]': {}
+        },
+        '.glass-dark': {
+          '@apply bg-black/[.5] backdrop-blur-[2px] backdrop-saturate-[1.8]': {}
+        },
+        '.border-glass': {
+          '@apply border border-white/[.05]': {}
+        }
+      });
+    }),
+    // Text balance utilities
+    plugin(({ addUtilities }) => {
+      addUtilities({
+        '.text-balance': {
+          'text-wrap': 'balance'
+        },
+        '.text-pretty': {
+          'text-wrap': 'pretty'
+        }
+      });
+    }),
+    // Mask utilities
+    plugin(({ addUtilities }) => {
+      addUtilities({
+        '.mask-fade-out': {
+          mask: 'linear-gradient(black, transparent)'
+        },
+        '.mask-fade-in': {
+          mask: 'linear-gradient(transparent, black)'
+        },
+        '.mask-radial': {
+          mask: 'radial-gradient(circle at center, black, transparent)'
+        }
+      });
+    }),
+    // Grid auto-fit utilities
+    plugin(({ addUtilities }) => {
+      addUtilities({
+        '.grid-auto-fit': {
+          'grid-template-columns': 'repeat(auto-fit, minmax(0, 1fr))'
+        },
+        '.grid-auto-fit-sm': {
+          'grid-template-columns': 'repeat(auto-fit, minmax(16rem, 1fr))'
+        },
+        '.grid-auto-fit-md': {
+          'grid-template-columns': 'repeat(auto-fit, minmax(24rem, 1fr))'
+        }
+      });
+    })
+  ]
+};
+
+export default config;
+
+
+# Filename: ./components/ui/card.tsx
+# Path: /Users/admin/gp/commerce/./components/ui/card.tsx
+
+// components/ui/card.tsx
+
+import * as React from 'react';
+import { cn } from '../../lib/utils';
+
+const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div
+      ref={ref}
+      className={cn(
+        'rounded-lg border border-gray-200 bg-white text-gray-950 shadow-sm dark:border-gray-800 dark:bg-gray-950 dark:text-gray-50',
+        className
+      )}
+      {...props}
+    />
+  )
+);
+Card.displayName = 'Card';
+
+const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div ref={ref} className={cn('flex flex-col space-y-1.5 p-6', className)} {...props} />
+  )
+);
+CardHeader.displayName = 'CardHeader';
+
+const CardTitle = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLHeadingElement>>(
+  ({ className, ...props }, ref) => (
+    <h3
+      ref={ref}
+      className={cn('text-2xl font-semibold leading-none tracking-tight', className)}
+      {...props}
+    />
+  )
+);
+CardTitle.displayName = 'CardTitle';
+
+const CardDescription = React.forwardRef<
+  HTMLParagraphElement,
+  React.HTMLAttributes<HTMLParagraphElement>
+>(({ className, ...props }, ref) => (
+  <p ref={ref} className={cn('text-sm text-gray-500 dark:text-gray-400', className)} {...props} />
+));
+CardDescription.displayName = 'CardDescription';
+
+const CardContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div ref={ref} className={cn('p-6 pt-0', className)} {...props} />
+  )
+);
+CardContent.displayName = 'CardContent';
+
+const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div ref={ref} className={cn('flex items-center p-6 pt-0', className)} {...props} />
+  )
+);
+CardFooter.displayName = 'CardFooter';
+
+export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle };
+
+
+# Filename: ./components/prose.tsx
+# Path: /Users/admin/gp/commerce/./components/prose.tsx
+
+import clsx from 'clsx';
+
+const Prose = ({ html, className }: { html: string; className?: string }) => {
+  return (
+    <div
+      className={clsx(
+        'prose mx-auto max-w-6xl text-base leading-7 text-black prose-headings:mt-8 prose-headings:font-semibold prose-headings:tracking-wide prose-headings:text-black prose-h1:text-5xl prose-h2:text-4xl prose-h3:text-3xl prose-h4:text-2xl prose-h5:text-xl prose-h6:text-lg prose-a:text-black prose-a:underline hover:prose-a:text-neutral-300 prose-strong:text-black prose-ol:mt-8 prose-ol:list-decimal prose-ol:pl-6 prose-ul:mt-8 prose-ul:list-disc prose-ul:pl-6 dark:text-white dark:prose-headings:text-white dark:prose-a:text-white dark:prose-strong:text-white',
+        className
+      )}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+};
+
+export default Prose;
+
+
+# Filename: ./components/logo-square.tsx
+# Path: /Users/admin/gp/commerce/./components/logo-square.tsx
+
+import clsx from 'clsx';
+import LogoIcon from './icons/logo';
+
+export default function LogoSquare({ size }: { size?: 'sm' | undefined }) {
+  return (
+    <div
+      className={clsx(
+        'flex flex-none items-center justify-center border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-black',
+        {
+          'h-[40px] w-[40px] rounded-xl': !size,
+          'h-[30px] w-[30px] rounded-lg': size === 'sm'
+        }
+      )}
+    >
+      <LogoIcon
+        className={clsx({
+          'h-[16px] w-[16px]': !size,
+          'h-[10px] w-[10px]': size === 'sm'
+        })}
+      />
+    </div>
+  );
+}
+
+
+# Filename: ./components/auth/password-strength.tsx
+# Path: /Users/admin/gp/commerce/./components/auth/password-strength.tsx
+
+
+
+# Filename: ./components/opengraph-image.tsx
+# Path: /Users/admin/gp/commerce/./components/opengraph-image.tsx
+
+import { ImageResponse } from 'next/og';
+import LogoIcon from './icons/logo';
+
+export type Props = {
+  title?: string;
+};
+
+export default async function OpengraphImage(props?: Props): Promise<ImageResponse> {
+  const { title } = {
+    ...{
+      title: process.env.SITE_NAME
+    },
+    ...props
+  };
+
+  return new ImageResponse(
+    (
+      <div tw="flex h-full w-full flex-col items-center justify-center bg-black">
+        <div tw="flex flex-none items-center justify-center border border-neutral-700 h-[160px] w-[160px] rounded-3xl">
+          <LogoIcon width="64" height="58" fill="white" />
+        </div>
+        <p tw="mt-12 text-6xl font-bold text-white">{title}</p>
+      </div>
+    ),
+    {
+      width: 1200,
+      height: 630,
+      fonts: [
+        {
+          name: 'Inter',
+          data: await fetch(new URL('../fonts/Inter-Bold.ttf', import.meta.url)).then((res) =>
+            res.arrayBuffer()
+          ),
+          style: 'normal',
+          weight: 700
+        }
+      ]
+    }
+  );
+}
+
+
+# Filename: ./components/layout/navbar/mobile-menu.tsx
+# Path: /Users/admin/gp/commerce/./components/layout/navbar/mobile-menu.tsx
+
+'use client';
+
+import { Dialog, Transition } from '@headlessui/react';
+import Link from 'next/link';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { Fragment, Suspense, useEffect, useState } from 'react';
+
+import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
+import { Menu } from 'lib/shopify/types';
+import Search, { SearchSkeleton } from './search';
+
+export default function MobileMenu({ menu }: { menu: Menu[] }) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [isOpen, setIsOpen] = useState(false);
+  const openMobileMenu = () => setIsOpen(true);
+  const closeMobileMenu = () => setIsOpen(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 768) {
+        setIsOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isOpen]);
+
+  useEffect(() => {
+    setIsOpen(false);
+  }, [pathname, searchParams]);
+
+  return (
+    <>
+      <button
+        onClick={openMobileMenu}
+        aria-label="Open mobile menu"
+        className="flex h-11 w-11 items-center justify-center rounded-md border border-neutral-200 text-black transition-colors md:hidden dark:border-neutral-700 dark:text-white"
+      >
+        <Bars3Icon className="h-4" />
+      </button>
+      <Transition show={isOpen}>
+        <Dialog onClose={closeMobileMenu} className="relative z-50">
+          <Transition.Child
+            as={Fragment}
+            enter="transition-all ease-in-out duration-300"
+            enterFrom="opacity-0 backdrop-blur-none"
+            enterTo="opacity-100 backdrop-blur-[.5px]"
+            leave="transition-all ease-in-out duration-200"
+            leaveFrom="opacity-100 backdrop-blur-[.5px]"
+            leaveTo="opacity-0 backdrop-blur-none"
+          >
+            <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
+          </Transition.Child>
+          <Transition.Child
+            as={Fragment}
+            enter="transition-all ease-in-out duration-300"
+            enterFrom="translate-x-[-100%]"
+            enterTo="translate-x-0"
+            leave="transition-all ease-in-out duration-200"
+            leaveFrom="translate-x-0"
+            leaveTo="translate-x-[-100%]"
+          >
+            <Dialog.Panel className="fixed bottom-0 left-0 right-0 top-0 flex h-full w-full flex-col bg-white pb-6 dark:bg-black">
+              <div className="p-4">
+                <button
+                  className="mb-4 flex h-11 w-11 items-center justify-center rounded-md border border-neutral-200 text-black transition-colors dark:border-neutral-700 dark:text-white"
+                  onClick={closeMobileMenu}
+                  aria-label="Close mobile menu"
+                >
+                  <XMarkIcon className="h-6" />
+                </button>
+
+                <div className="mb-4 w-full">
+                  <Suspense fallback={<SearchSkeleton />}>
+                    <Search />
+                  </Suspense>
+                </div>
+                {menu.length ? (
+                  <ul className="flex w-full flex-col">
+                    {menu.map((item: Menu) => (
+                      <li
+                        className="py-2 text-xl text-black transition-colors hover:text-neutral-500 dark:text-white"
+                        key={item.title}
+                      >
+                        <Link href={item.path} prefetch={true} onClick={closeMobileMenu}>
+                          {item.title}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            </Dialog.Panel>
+          </Transition.Child>
+        </Dialog>
+      </Transition>
+    </>
+  );
+}
+
+
+# Filename: ./components/layout/navbar/index.tsx
+# Path: /Users/admin/gp/commerce/./components/layout/navbar/index.tsx
+
+import CartModal from 'components/cart/modal';
+import LogoSquare from 'components/logo-square';
+import { getMenu } from 'lib/shopify';
+import { Menu } from 'lib/shopify/types';
+import Link from 'next/link';
+import { Suspense } from 'react';
+import MobileMenu from './mobile-menu';
+import Search, { SearchSkeleton } from './search';
+
+const { SITE_NAME } = process.env;
+
+export async function Navbar() {
+  const menu = await getMenu('next-js-frontend-header-menu');
+
+  return (
+    <nav className="relative flex items-center justify-between p-4 lg:px-6">
+      <div className="block flex-none md:hidden">
+        <Suspense fallback={null}>
+          <MobileMenu menu={menu} />
+        </Suspense>
+      </div>
+      <div className="flex w-full items-center">
+        <div className="flex w-full md:w-1/3">
+          <Link
+            href="/"
+            prefetch={true}
+            className="mr-2 flex w-full items-center justify-center md:w-auto lg:mr-6"
+          >
+            <LogoSquare />
+            <div className="ml-2 flex-none text-sm font-medium uppercase md:hidden lg:block">
+              {SITE_NAME}
+            </div>
+          </Link>
+          {menu.length ? (
+            <ul className="hidden gap-6 text-sm md:flex md:items-center">
+              {menu.map((item: Menu) => (
+                <li key={item.title}>
+                  <Link
+                    href={item.path}
+                    prefetch={true}
+                    className="text-neutral-500 underline-offset-4 hover:text-black hover:underline dark:text-neutral-400 dark:hover:text-neutral-300"
+                  >
+                    {item.title}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+        <div className="hidden justify-center md:flex md:w-1/3">
+          <Suspense fallback={<SearchSkeleton />}>
+            <Search />
+          </Suspense>
+        </div>
+        <div className="flex justify-end md:w-1/3">
+          <CartModal />
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+
+# Filename: ./components/layout/navbar/search.tsx
+# Path: /Users/admin/gp/commerce/./components/layout/navbar/search.tsx
+
+'use client';
+
+import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import Form from 'next/form';
+import { useSearchParams } from 'next/navigation';
+
+export default function Search() {
+  const searchParams = useSearchParams();
+
+  return (
+    <Form action="/search" className="w-max-[550px] relative w-full lg:w-80 xl:w-full">
+      <input
+        key={searchParams?.get('q')}
+        type="text"
+        name="q"
+        placeholder="Search for products..."
+        autoComplete="off"
+        defaultValue={searchParams?.get('q') || ''}
+        className="text-md w-full rounded-lg border bg-white px-4 py-2 text-black placeholder:text-neutral-500 md:text-sm dark:border-neutral-800 dark:bg-transparent dark:text-white dark:placeholder:text-neutral-400"
+      />
+      <div className="absolute right-0 top-0 mr-3 flex h-full items-center">
+        <MagnifyingGlassIcon className="h-4" />
+      </div>
+    </Form>
+  );
+}
+
+export function SearchSkeleton() {
+  return (
+    <form className="w-max-[550px] relative w-full lg:w-80 xl:w-full">
+      <input
+        placeholder="Search for products..."
+        className="w-full rounded-lg border bg-white px-4 py-2 text-sm text-black placeholder:text-neutral-500 dark:border-neutral-800 dark:bg-transparent dark:text-white dark:placeholder:text-neutral-400"
+      />
+      <div className="absolute right-0 top-0 mr-3 flex h-full items-center">
+        <MagnifyingGlassIcon className="h-4" />
+      </div>
+    </form>
+  );
+}
+
+
+# Filename: ./components/layout/product-grid-items.tsx
+# Path: /Users/admin/gp/commerce/./components/layout/product-grid-items.tsx
+
+import Grid from 'components/grid';
+import { GridTileImage } from 'components/grid/tile';
+import { Product } from 'lib/shopify/types';
+import Link from 'next/link';
+
+export default function ProductGridItems({ products }: { products: Product[] }) {
+  return (
+    <>
+      {products.map((product) => (
+        <Grid.Item key={product.handle} className="animate-fadeIn">
+          <Link
+            className="relative inline-block h-full w-full"
+            href={`/product/${product.handle}`}
+            prefetch={true}
+          >
+            <GridTileImage
+              alt={product.title}
+              label={{
+                title: product.title,
+                amount: product.priceRange.maxVariantPrice.amount,
+                currencyCode: product.priceRange.maxVariantPrice.currencyCode
+              }}
+              src={product.featuredImage?.url}
+              fill
+              sizes="(min-width: 768px) 33vw, (min-width: 640px) 50vw, 100vw"
+            />
+          </Link>
+        </Grid.Item>
+      ))}
+    </>
+  );
+}
+
+
+# Filename: ./components/layout/search/filter/index.tsx
+# Path: /Users/admin/gp/commerce/./components/layout/search/filter/index.tsx
+
+import { SortFilterItem } from 'lib/constants';
+import { Suspense } from 'react';
+import FilterItemDropdown from './dropdown';
+import { FilterItem } from './item';
+
+export type ListItem = SortFilterItem | PathFilterItem;
+export type PathFilterItem = { title: string; path: string };
+
+function FilterItemList({ list }: { list: ListItem[] }) {
+  return (
+    <>
+      {list.map((item: ListItem, i) => (
+        <FilterItem key={i} item={item} />
+      ))}
+    </>
+  );
+}
+
+export default function FilterList({ list, title }: { list: ListItem[]; title?: string }) {
+  return (
+    <>
+      <nav>
+        {title ? (
+          <h3 className="hidden text-xs text-neutral-500 md:block dark:text-neutral-400">
+            {title}
+          </h3>
+        ) : null}
+        <ul className="hidden md:block">
+          <Suspense fallback={null}>
+            <FilterItemList list={list} />
+          </Suspense>
+        </ul>
+        <ul className="md:hidden">
+          <Suspense fallback={null}>
+            <FilterItemDropdown list={list} />
+          </Suspense>
+        </ul>
+      </nav>
+    </>
+  );
+}
+
+
+# Filename: ./components/layout/search/filter/item.tsx
+# Path: /Users/admin/gp/commerce/./components/layout/search/filter/item.tsx
+
+'use client';
+
+import clsx from 'clsx';
+import type { SortFilterItem } from 'lib/constants';
+import { createUrl } from 'lib/utils';
+import Link from 'next/link';
+import { usePathname, useSearchParams } from 'next/navigation';
+import type { ListItem, PathFilterItem } from '.';
+
+function PathFilterItem({ item }: { item: PathFilterItem }) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const active = pathname === item.path;
+  const newParams = new URLSearchParams(searchParams.toString());
+  const DynamicTag = active ? 'p' : Link;
+
+  newParams.delete('q');
+
+  return (
+    <li className="mt-2 flex text-black dark:text-white" key={item.title}>
+      <DynamicTag
+        href={createUrl(item.path, newParams)}
+        className={clsx(
+          'w-full text-sm underline-offset-4 hover:underline dark:hover:text-neutral-100',
+          {
+            'underline underline-offset-4': active
+          }
+        )}
+      >
+        {item.title}
+      </DynamicTag>
+    </li>
+  );
+}
+
+function SortFilterItem({ item }: { item: SortFilterItem }) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const active = searchParams.get('sort') === item.slug;
+  const q = searchParams.get('q');
+  const href = createUrl(
+    pathname,
+    new URLSearchParams({
+      ...(q && { q }),
+      ...(item.slug && item.slug.length && { sort: item.slug })
+    })
+  );
+  const DynamicTag = active ? 'p' : Link;
+
+  return (
+    <li className="mt-2 flex text-sm text-black dark:text-white" key={item.title}>
+      <DynamicTag
+        prefetch={!active ? false : undefined}
+        href={href}
+        className={clsx('w-full hover:underline hover:underline-offset-4', {
+          'underline underline-offset-4': active
+        })}
+      >
+        {item.title}
+      </DynamicTag>
+    </li>
+  );
+}
+
+export function FilterItem({ item }: { item: ListItem }) {
+  return 'path' in item ? <PathFilterItem item={item} /> : <SortFilterItem item={item} />;
+}
+
+
+# Filename: ./components/layout/search/filter/dropdown.tsx
+# Path: /Users/admin/gp/commerce/./components/layout/search/filter/dropdown.tsx
+
+'use client';
+
+import { usePathname, useSearchParams } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
+
+import { ChevronDownIcon } from '@heroicons/react/24/outline';
+import type { ListItem } from '.';
+import { FilterItem } from './item';
+
+export default function FilterItemDropdown({ list }: { list: ListItem[] }) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [active, setActive] = useState('');
+  const [openSelect, setOpenSelect] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setOpenSelect(false);
+      }
+    };
+
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    list.forEach((listItem: ListItem) => {
+      if (
+        ('path' in listItem && pathname === listItem.path) ||
+        ('slug' in listItem && searchParams.get('sort') === listItem.slug)
+      ) {
+        setActive(listItem.title);
+      }
+    });
+  }, [pathname, list, searchParams]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <div
+        onClick={() => {
+          setOpenSelect(!openSelect);
+        }}
+        className="flex w-full items-center justify-between rounded border border-black/30 px-4 py-2 text-sm dark:border-white/30"
+      >
+        <div>{active}</div>
+        <ChevronDownIcon className="h-4" />
+      </div>
+      {openSelect && (
+        <div
+          onClick={() => {
+            setOpenSelect(false);
+          }}
+          className="absolute z-40 w-full rounded-b-md bg-white p-4 shadow-md dark:bg-black"
+        >
+          {list.map((item: ListItem, i) => (
+            <FilterItem key={i} item={item} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+# Filename: ./components/layout/search/collections.tsx
+# Path: /Users/admin/gp/commerce/./components/layout/search/collections.tsx
+
+import clsx from 'clsx';
+import { Suspense } from 'react';
+
+import { getCollections } from 'lib/shopify';
+import FilterList from './filter';
+
+async function CollectionList() {
+  const collections = await getCollections();
+  return <FilterList list={collections} title="Collections" />;
+}
+
+const skeleton = 'mb-3 h-4 w-5/6 animate-pulse rounded';
+const activeAndTitles = 'bg-neutral-800 dark:bg-neutral-300';
+const items = 'bg-neutral-400 dark:bg-neutral-700';
+
+export default function Collections() {
+  return (
+    <Suspense
+      fallback={
+        <div className="col-span-2 hidden h-[400px] w-full flex-none py-4 lg:block">
+          <div className={clsx(skeleton, activeAndTitles)} />
+          <div className={clsx(skeleton, activeAndTitles)} />
+          <div className={clsx(skeleton, items)} />
+          <div className={clsx(skeleton, items)} />
+          <div className={clsx(skeleton, items)} />
+          <div className={clsx(skeleton, items)} />
+          <div className={clsx(skeleton, items)} />
+          <div className={clsx(skeleton, items)} />
+          <div className={clsx(skeleton, items)} />
+          <div className={clsx(skeleton, items)} />
+        </div>
+      }
+    >
+      <CollectionList />
+    </Suspense>
+  );
+}
+
+
+# Filename: ./components/layout/footer.tsx
+# Path: /Users/admin/gp/commerce/./components/layout/footer.tsx
+
+import Link from 'next/link';
+
+import FooterMenu from 'components/layout/footer-menu';
+import LogoSquare from 'components/logo-square';
+import { getMenu } from 'lib/shopify';
+import { Suspense } from 'react';
+
+const { COMPANY_NAME, SITE_NAME } = process.env;
+
+export default async function Footer() {
+  const currentYear = new Date().getFullYear();
+  const copyrightDate = 2023 + (currentYear > 2023 ? `-${currentYear}` : '');
+  const skeleton = 'w-full h-6 animate-pulse rounded bg-neutral-200 dark:bg-neutral-700';
+  const menu = await getMenu('next-js-frontend-footer-menu');
+  const copyrightName = COMPANY_NAME || SITE_NAME || '';
+
+  return (
+    <footer className="text-sm text-neutral-500 dark:text-neutral-400">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 border-t border-neutral-200 px-6 py-12 text-sm md:flex-row md:gap-12 md:px-4 min-[1320px]:px-0 dark:border-neutral-700">
+        <div>
+          <Link className="flex items-center gap-2 text-black md:pt-1 dark:text-white" href="/">
+            <LogoSquare size="sm" />
+            <span className="uppercase">{SITE_NAME}</span>
+          </Link>
+        </div>
+        <Suspense
+          fallback={
+            <div className="flex h-[188px] w-[200px] flex-col gap-2">
+              <div className={skeleton} />
+              <div className={skeleton} />
+              <div className={skeleton} />
+              <div className={skeleton} />
+              <div className={skeleton} />
+              <div className={skeleton} />
+            </div>
+          }
+        >
+          <FooterMenu menu={menu} />
+        </Suspense>
+        <div className="md:ml-auto">
+          <a
+            className="flex h-8 w-max flex-none items-center justify-center rounded-md border border-neutral-200 bg-white text-xs text-black dark:border-neutral-700 dark:bg-black dark:text-white"
+            aria-label="Deploy on Vercel"
+            href="https://vercel.com/templates/next.js/nextjs-commerce"
+          >
+            <span className="px-3">▲</span>
+            <hr className="h-full border-r border-neutral-200 dark:border-neutral-700" />
+            <span className="px-3">Deploy</span>
+          </a>
+        </div>
+      </div>
+      <div className="border-t border-neutral-200 py-6 text-sm dark:border-neutral-700">
+        <div className="mx-auto flex w-full max-w-7xl flex-col items-center gap-1 px-4 md:flex-row md:gap-0 md:px-4 min-[1320px]:px-0">
+          <p>
+            &copy; {copyrightDate} {copyrightName}
+            {copyrightName.length && !copyrightName.endsWith('.') ? '.' : ''} All rights reserved.
+          </p>
+          <hr className="mx-4 hidden h-4 w-[1px] border-l border-neutral-400 md:inline-block" />
+          <p>
+            <a href="https://github.com/vercel/commerce">View the source</a>
+          </p>
+          <p className="md:ml-auto">
+            <a href="https://vercel.com" className="text-black dark:text-white">
+              Created by ▲ Vercel
+            </a>
+          </p>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+
+# Filename: ./components/layout/footer-menu.tsx
+# Path: /Users/admin/gp/commerce/./components/layout/footer-menu.tsx
+
+'use client';
+
+import clsx from 'clsx';
+import { Menu } from 'lib/shopify/types';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
+
+export function FooterMenuItem({ item }: { item: Menu }) {
+  const pathname = usePathname();
+  const [active, setActive] = useState(pathname === item.path);
+
+  useEffect(() => {
+    setActive(pathname === item.path);
+  }, [pathname, item.path]);
+
+  return (
+    <li>
+      <Link
+        href={item.path}
+        className={clsx(
+          'block p-2 text-lg underline-offset-4 hover:text-black hover:underline md:inline-block md:text-sm dark:hover:text-neutral-300',
+          {
+            'text-black dark:text-neutral-300': active
+          }
+        )}
+      >
+        {item.title}
+      </Link>
+    </li>
+  );
+}
+
+export default function FooterMenu({ menu }: { menu: Menu[] }) {
+  if (!menu.length) return null;
+
+  return (
+    <nav>
+      <ul>
+        {menu.map((item: Menu) => {
+          return <FooterMenuItem key={item.title} item={item} />;
+        })}
+      </ul>
+    </nav>
+  );
+}
+
+
+# Filename: ./components/providers/theme-provider.tsx
+# Path: /Users/admin/gp/commerce/./components/providers/theme-provider.tsx
+
+// components/providers/theme-provider.tsx
+
+'use client';
+
+import { ThemeProvider as NextThemesProvider } from 'next-themes';
+import { type ThemeProviderProps } from 'next-themes/dist/types';
+
+export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
+  return <NextThemesProvider {...props}>{children}</NextThemesProvider>;
+}
+
+
+# Filename: ./components/providers/providers.tsx
+# Path: /Users/admin/gp/commerce/./components/providers/providers.tsx
+
+// components/providers/providers.tsx
+
+'use client';
+
+import { SessionProvider } from 'next-auth/react';
+import { type ThemeProviderProps } from 'next-themes/dist/types';
+import { ThemeProvider } from './theme-provider';
+
+interface ProvidersProps extends ThemeProviderProps {
+  children: React.ReactNode;
+}
+
+export function Providers({ children, ...themeProps }: ProvidersProps) {
+  return (
+    <SessionProvider>
+      <ThemeProvider {...themeProps}>{children}</ThemeProvider>
+    </SessionProvider>
+  );
+}
+
+
+# Filename: ./components/label.tsx
+# Path: /Users/admin/gp/commerce/./components/label.tsx
+
+import clsx from 'clsx';
+import Price from './price';
+
+const Label = ({
+  title,
+  amount,
+  currencyCode,
+  position = 'bottom'
+}: {
+  title: string;
+  amount: string;
+  currencyCode: string;
+  position?: 'bottom' | 'center';
+}) => {
+  return (
+    <div
+      className={clsx('absolute bottom-0 left-0 flex w-full px-4 pb-4 @container/label', {
+        'lg:px-20 lg:pb-[35%]': position === 'center'
+      })}
+    >
+      <div className="flex items-center rounded-full border bg-white/70 p-1 text-xs font-semibold text-black backdrop-blur-md dark:border-neutral-800 dark:bg-black/70 dark:text-white">
+        <h3 className="mr-4 line-clamp-2 flex-grow pl-2 leading-none tracking-tight">{title}</h3>
+        <Price
+          className="flex-none rounded-full bg-blue-600 p-2 text-white"
+          amount={amount}
+          currencyCode={currencyCode}
+          currencyCodeClassName="hidden @[275px]/label:inline"
+        />
+      </div>
+    </div>
+  );
+};
+
+export default Label;
+
+
+# Filename: ./components/product/gallery.tsx
+# Path: /Users/admin/gp/commerce/./components/product/gallery.tsx
+
+'use client';
+
+import { ArrowLeftIcon, ArrowRightIcon } from '@heroicons/react/24/outline';
+import { GridTileImage } from 'components/grid/tile';
+import { useProduct, useUpdateURL } from 'components/product/product-context';
+import Image from 'next/image';
+
+export function Gallery({ images }: { images: { src: string; altText: string }[] }) {
+  const { state, updateImage } = useProduct();
+  const updateURL = useUpdateURL();
+  const imageIndex = state.image ? parseInt(state.image) : 0;
+
+  const nextImageIndex = imageIndex + 1 < images.length ? imageIndex + 1 : 0;
+  const previousImageIndex = imageIndex === 0 ? images.length - 1 : imageIndex - 1;
+
+  const buttonClassName =
+    'h-full px-6 transition-all ease-in-out hover:scale-110 hover:text-black dark:hover:text-white flex items-center justify-center';
+
+  return (
+    <form>
+      <div className="relative aspect-square h-full max-h-[550px] w-full overflow-hidden">
+        {images[imageIndex] && (
+          <Image
+            className="h-full w-full object-contain"
+            fill
+            sizes="(min-width: 1024px) 66vw, 100vw"
+            alt={images[imageIndex]?.altText as string}
+            src={images[imageIndex]?.src as string}
+            priority={true}
+          />
+        )}
+
+        {images.length > 1 ? (
+          <div className="absolute bottom-[15%] flex w-full justify-center">
+            <div className="mx-auto flex h-11 items-center rounded-full border border-white bg-neutral-50/80 text-neutral-500 backdrop-blur dark:border-black dark:bg-neutral-900/80">
+              <button
+                formAction={() => {
+                  const newState = updateImage(previousImageIndex.toString());
+                  updateURL(newState);
+                }}
+                aria-label="Previous product image"
+                className={buttonClassName}
+              >
+                <ArrowLeftIcon className="h-5" />
+              </button>
+              <div className="mx-1 h-6 w-px bg-neutral-500"></div>
+              <button
+                formAction={() => {
+                  const newState = updateImage(nextImageIndex.toString());
+                  updateURL(newState);
+                }}
+                aria-label="Next product image"
+                className={buttonClassName}
+              >
+                <ArrowRightIcon className="h-5" />
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {images.length > 1 ? (
+        <ul className="my-12 flex items-center justify-center gap-2 overflow-auto py-1 lg:mb-0">
+          {images.map((image, index) => {
+            const isActive = index === imageIndex;
+
+            return (
+              <li key={image.src} className="h-20 w-20">
+                <button
+                  formAction={() => {
+                    const newState = updateImage(index.toString());
+                    updateURL(newState);
+                  }}
+                  aria-label="Select product image"
+                  className="h-full w-full"
+                >
+                  <GridTileImage
+                    alt={image.altText}
+                    src={image.src}
+                    width={80}
+                    height={80}
+                    active={isActive}
+                  />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </form>
+  );
+}
+
+
+# Filename: ./components/product/product-description.tsx
+# Path: /Users/admin/gp/commerce/./components/product/product-description.tsx
+
+import { AddToCart } from 'components/cart/add-to-cart';
+import Price from 'components/price';
+import Prose from 'components/prose';
+import { Product } from 'lib/shopify/types';
+import { VariantSelector } from './variant-selector';
+
+export function ProductDescription({ product }: { product: Product }) {
+  return (
+    <>
+      <div className="mb-6 flex flex-col border-b pb-6 dark:border-neutral-700">
+        <h1 className="mb-2 text-5xl font-medium">{product.title}</h1>
+        <div className="mr-auto w-auto rounded-full bg-blue-600 p-2 text-sm text-white">
+          <Price
+            amount={product.priceRange.maxVariantPrice.amount}
+            currencyCode={product.priceRange.maxVariantPrice.currencyCode}
+          />
+        </div>
+      </div>
+      <VariantSelector options={product.options} variants={product.variants} />
+      {product.descriptionHtml ? (
+        <Prose
+          className="mb-6 text-sm leading-tight dark:text-white/[60%]"
+          html={product.descriptionHtml}
+        />
+      ) : null}
+      <AddToCart product={product} />
+    </>
+  );
+}
+
+
+# Filename: ./components/product/variant-selector.tsx
+# Path: /Users/admin/gp/commerce/./components/product/variant-selector.tsx
+
+'use client';
+
+import clsx from 'clsx';
+import { useProduct, useUpdateURL } from 'components/product/product-context';
+import { ProductOption, ProductVariant } from 'lib/shopify/types';
+
+type Combination = {
+  id: string;
+  availableForSale: boolean;
+  [key: string]: string | boolean;
+};
+
+export function VariantSelector({
+  options,
+  variants
+}: {
+  options: ProductOption[];
+  variants: ProductVariant[];
+}) {
+  const { state, updateOption } = useProduct();
+  const updateURL = useUpdateURL();
+  const hasNoOptionsOrJustOneOption =
+    !options.length || (options.length === 1 && options[0]?.values.length === 1);
+
+  if (hasNoOptionsOrJustOneOption) {
+    return null;
+  }
+
+  const combinations: Combination[] = variants.map((variant) => ({
+    id: variant.id,
+    availableForSale: variant.availableForSale,
+    ...variant.selectedOptions.reduce(
+      (accumulator, option) => ({ ...accumulator, [option.name.toLowerCase()]: option.value }),
+      {}
+    )
+  }));
+
+  return options.map((option) => (
+    <form key={option.id}>
+      <dl className="mb-8">
+        <dt className="mb-4 text-sm uppercase tracking-wide">{option.name}</dt>
+        <dd className="flex flex-wrap gap-3">
+          {option.values.map((value) => {
+            const optionNameLowerCase = option.name.toLowerCase();
+
+            // Base option params on current selectedOptions so we can preserve any other param state.
+            const optionParams = { ...state, [optionNameLowerCase]: value };
+
+            // Filter out invalid options and check if the option combination is available for sale.
+            const filtered = Object.entries(optionParams).filter(([key, value]) =>
+              options.find(
+                (option) => option.name.toLowerCase() === key && option.values.includes(value)
+              )
+            );
+            const isAvailableForSale = combinations.find((combination) =>
+              filtered.every(
+                ([key, value]) => combination[key] === value && combination.availableForSale
+              )
+            );
+
+            // The option is active if it's in the selected options.
+            const isActive = state[optionNameLowerCase] === value;
+
+            return (
+              <button
+                formAction={() => {
+                  const newState = updateOption(optionNameLowerCase, value);
+                  updateURL(newState);
+                }}
+                key={value}
+                aria-disabled={!isAvailableForSale}
+                disabled={!isAvailableForSale}
+                title={`${option.name} ${value}${!isAvailableForSale ? ' (Out of Stock)' : ''}`}
+                className={clsx(
+                  'flex min-w-[48px] items-center justify-center rounded-full border bg-neutral-100 px-2 py-1 text-sm dark:border-neutral-800 dark:bg-neutral-900',
+                  {
+                    'cursor-default ring-2 ring-blue-600': isActive,
+                    'ring-1 ring-transparent transition duration-300 ease-in-out hover:ring-blue-600':
+                      !isActive && isAvailableForSale,
+                    'relative z-10 cursor-not-allowed overflow-hidden bg-neutral-100 text-neutral-500 ring-1 ring-neutral-300 before:absolute before:inset-x-0 before:-z-10 before:h-px before:-rotate-45 before:bg-neutral-300 before:transition-transform dark:bg-neutral-900 dark:text-neutral-400 dark:ring-neutral-700 before:dark:bg-neutral-700':
+                      !isAvailableForSale
+                  }
+                )}
+              >
+                {value}
+              </button>
+            );
+          })}
+        </dd>
+      </dl>
+    </form>
+  ));
+}
+
+
+# Filename: ./components/product/product-context.tsx
+# Path: /Users/admin/gp/commerce/./components/product/product-context.tsx
+
+'use client';
+
+import { useRouter, useSearchParams } from 'next/navigation';
+import React, { createContext, useContext, useMemo, useOptimistic } from 'react';
+
+type ProductState = {
+  [key: string]: string;
+} & {
+  image?: string;
+};
+
+type ProductContextType = {
+  state: ProductState;
+  updateOption: (name: string, value: string) => ProductState;
+  updateImage: (index: string) => ProductState;
+};
+
+const ProductContext = createContext<ProductContextType | undefined>(undefined);
+
+export function ProductProvider({ children }: { children: React.ReactNode }) {
+  const searchParams = useSearchParams();
+
+  const getInitialState = () => {
+    const params: ProductState = {};
+    for (const [key, value] of searchParams.entries()) {
+      params[key] = value;
+    }
+    return params;
+  };
+
+  const [state, setOptimisticState] = useOptimistic(
+    getInitialState(),
+    (prevState: ProductState, update: ProductState) => ({
+      ...prevState,
+      ...update
+    })
+  );
+
+  const updateOption = (name: string, value: string) => {
+    const newState = { [name]: value };
+    setOptimisticState(newState);
+    return { ...state, ...newState };
+  };
+
+  const updateImage = (index: string) => {
+    const newState = { image: index };
+    setOptimisticState(newState);
+    return { ...state, ...newState };
+  };
+
+  const value = useMemo(
+    () => ({
+      state,
+      updateOption,
+      updateImage
+    }),
+    [state]
+  );
+
+  return <ProductContext.Provider value={value}>{children}</ProductContext.Provider>;
+}
+
+export function useProduct() {
+  const context = useContext(ProductContext);
+  if (context === undefined) {
+    throw new Error('useProduct must be used within a ProductProvider');
+  }
+  return context;
+}
+
+export function useUpdateURL() {
+  const router = useRouter();
+
+  return (state: ProductState) => {
+    const newParams = new URLSearchParams(window.location.search);
+    Object.entries(state).forEach(([key, value]) => {
+      newParams.set(key, value);
+    });
+    router.push(`?${newParams.toString()}`, { scroll: false });
+  };
+}
+
+
+# Filename: ./components/welcome-toast.tsx
+# Path: /Users/admin/gp/commerce/./components/welcome-toast.tsx
+
+'use client';
+
+import { useEffect } from 'react';
+import { toast } from 'sonner';
+
+export function WelcomeToast() {
+  useEffect(() => {
+    // ignore if screen height is too small
+    if (window.innerHeight < 650) return;
+    if (!document.cookie.includes('welcome-toast=2')) {
+      toast('🛍️ Welcome to Next.js Commerce!', {
+        id: 'welcome-toast',
+        duration: Infinity,
+        onDismiss: () => {
+          document.cookie = 'welcome-toast=2; max-age=31536000; path=/';
+        },
+        description: (
+          <>
+            This is a high-performance, SSR storefront powered by Shopify, Next.js, and Vercel.{' '}
+            <a
+              href="https://vercel.com/templates/next.js/nextjs-commerce"
+              className="text-blue-600 hover:underline"
+              target="_blank"
+            >
+              Deploy your own
+            </a>
+            .
+          </>
+        )
+      });
+    }
+  }, []);
+
+  return null;
+}
+
+
+# Filename: ./components/price.tsx
+# Path: /Users/admin/gp/commerce/./components/price.tsx
+
+import clsx from 'clsx';
+
+const Price = ({
+  amount,
+  className,
+  currencyCode = 'USD',
+  currencyCodeClassName
+}: {
+  amount: string;
+  className?: string;
+  currencyCode: string;
+  currencyCodeClassName?: string;
+} & React.ComponentProps<'p'>) => (
+  <p suppressHydrationWarning={true} className={className}>
+    {`${new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: currencyCode,
+      currencyDisplay: 'narrowSymbol'
+    }).format(parseFloat(amount))}`}
+    <span className={clsx('ml-1 inline', currencyCodeClassName)}>{`${currencyCode}`}</span>
+  </p>
+);
+
+export default Price;
+
+
+# Filename: ./components/icons/logo.tsx
+# Path: /Users/admin/gp/commerce/./components/icons/logo.tsx
+
+import clsx from 'clsx';
+
+export default function LogoIcon(props: React.ComponentProps<'svg'>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      aria-label={`${process.env.SITE_NAME} logo`}
+      viewBox="0 0 32 28"
+      {...props}
+      className={clsx('h-4 w-4 fill-black dark:fill-white', props.className)}
+    >
+      <path d="M21.5758 9.75769L16 0L0 28H11.6255L21.5758 9.75769Z" />
+      <path d="M26.2381 17.9167L20.7382 28H32L26.2381 17.9167Z" />
+    </svg>
+  );
+}
+
+
+# Filename: ./components/HeroBanner/index.tsx
+# Path: /Users/admin/gp/commerce/./components/HeroBanner/index.tsx
+
+// components/HeroBanner/index.tsx
+import Image from 'next/image';
+import { HeroBannerContent } from './hero-banner-content';
+import { ScrollIndicator } from './scroll-indicator';
+
+export function HeroBanner() {
+  return (
+    <div className="relative flex flex-col lg:h-screen lg:flex-row">
+      {/* Mobile Nav Dots */}
+      <div className="fixed right-4 top-1/2 z-20 -translate-y-1/2 lg:hidden">
+        <div className="flex flex-col gap-2">
+          <div className="h-2 w-2 rounded-full bg-white/80" />
+          <div className="h-2 w-2 rounded-full bg-white/40" />
+        </div>
+      </div>
+
+      {/* Men's Section */}
+      <div className="relative h-[60vh] overflow-hidden lg:h-full lg:w-1/2">
+        <div className="absolute inset-0">
+          <Image
+            src="/images/banner/mens-banner.jpg"
+            alt="Men's Collection"
+            fill
+            priority
+            className="object-cover"
+            sizes="(max-width: 1024px) 100vw, 50vw"
+            quality={90}
+          />
+          <div className="absolute inset-0 bg-black/40" />
+        </div>
+
+        <HeroBannerContent
+          section="men"
+          title="MEN"
+          description="Discover our latest men's collection featuring contemporary designs and premium materials"
+          categories={['Suits', 'Casual', 'Accessories', 'Shoes']}
+          featuredProduct={{
+            name: 'Premium Wool Suit',
+            price: '$599',
+            image: '/images/products/mens-suit.jpg'
+          }}
+        />
+      </div>
+
+      {/* Women's Section */}
+      <div className="relative h-[60vh] overflow-hidden lg:h-full lg:w-1/2">
+        <div className="absolute inset-0">
+          <Image
+            src="/images/banner/womens-banner.jpg"
+            alt="Women's Collection"
+            fill
+            priority
+            className="object-cover"
+            sizes="(max-width: 1024px) 100vw, 50vw"
+            quality={90}
+          />
+          <div className="absolute inset-0 bg-black/40" />
+        </div>
+
+        <HeroBannerContent
+          section="women"
+          title="WOMEN"
+          description="Explore our women's collection featuring elegant designs and seasonal essentials"
+          categories={['Dresses', 'Casual', 'Accessories', 'Bags']}
+          featuredProduct={{
+            name: 'Silk Evening Dress',
+            price: '$399',
+            image: '/images/products/womens-dress.jpg'
+          }}
+        />
+      </div>
+
+      {/* Scroll Indicator - Only on Desktop */}
+      <div className="hidden lg:block">
+        <ScrollIndicator />
+      </div>
+    </div>
+  );
+}
+
+
+# Filename: ./components/HeroBanner/breakpoints.ts
+# Path: /Users/admin/gp/commerce/./components/HeroBanner/breakpoints.ts
+
+// components/HeroBanner/breakpoints.ts
+export const breakpoints = {
+  sm: '640px', // Small devices
+  md: '768px', // Medium devices
+  lg: '1024px', // Large devices
+  xl: '1280px', // Extra large devices
+  '2xl': '1536px' // 2X large devices
+};
+
+
+# Filename: ./components/HeroBanner/hero-banner-buttons.tsx
+# Path: /Users/admin/gp/commerce/./components/HeroBanner/hero-banner-buttons.tsx
+
+// components/HeroBanner/hero-banner-buttons.tsx
+'use client';
+
+import { ArrowRight } from 'lucide-react';
+
+export function HeroBannerButtons() {
+  return (
+    <div className="flex flex-col space-y-4 sm:flex-row sm:space-x-4 sm:space-y-0">
+      <button
+        onClick={() => {
+          console.log('Primary button clicked');
+          // Add your navigation or action logic here
+        }}
+        className="inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-6 py-3 text-base font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+      >
+        View Collection
+        <ArrowRight className="ml-2 h-5 w-5" />
+      </button>
+      <button
+        onClick={() => {
+          console.log('Secondary button clicked');
+          // Add your navigation or action logic here
+        }}
+        className="inline-flex items-center justify-center rounded-md border border-transparent bg-white px-6 py-3 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+      >
+        View Lookbook
+      </button>
+    </div>
+  );
+}
+
+
+# Filename: ./components/HeroBanner/types.ts
+# Path: /Users/admin/gp/commerce/./components/HeroBanner/types.ts
+
+// components/HeroBanner/types.ts
+import { type Product } from 'lib/shopify/types';
+
+export interface HeroCollection {
+  handle: string;
+  title: string;
+  description: string;
+  products: Product[];
+}
+
+export interface HeroBannerContentProps {
+  section: 'men' | 'women';
+  collection: HeroCollection;
+  featuredProduct?: Product;
+}
+
+
+# Filename: ./components/HeroBanner/scroll-indicator.tsx
+# Path: /Users/admin/gp/commerce/./components/HeroBanner/scroll-indicator.tsx
+
+// components/HeroBanner/scroll-indicator.tsx
+'use client';
+
+import { MotionDiv } from './motion-types';
+
+export function ScrollIndicator() {
+  return (
+    <MotionDiv
+      style={{
+        position: 'absolute',
+        bottom: '2rem',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 10,
+        display: 'none',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '0.5rem'
+      }}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 2 }}
+    >
+      <span className="text-sm text-white/80">Scroll to explore</span>
+      <MotionDiv
+        style={{
+          width: '2px',
+          height: '2rem',
+          backgroundColor: 'rgba(255, 255, 255, 0.4)'
+        }}
+        animate={{
+          scaleY: [1, 1.2, 1],
+          opacity: [0.4, 0.8, 0.4]
+        }}
+        transition={{
+          duration: 1.5,
+          repeat: Infinity,
+          ease: 'easeInOut'
+        }}
+      />
+    </MotionDiv>
+  );
+}
+
+
+# Filename: ./components/HeroBanner/config.ts
+# Path: /Users/admin/gp/commerce/./components/HeroBanner/config.ts
+
+// components/HeroBanner/config.ts
+export const BANNER_IMAGES = {
+  men: {
+    url: '/images/banner/mens-banner.jpg',
+    alt: "Men's Collection - Modern fashion for men",
+    blurUrl: 'data:image/jpeg;base64,...' // Optional blur data URL
+  },
+  women: {
+    url: '/images/banner/womens-banner.jpg',
+    alt: "Women's Collection - Contemporary fashion for women",
+    blurUrl: 'data:image/jpeg;base64,...' // Optional blur data URL
+  }
+} as const;
+
+
+# Filename: ./components/HeroBanner/hero-banner-content.tsx
+# Path: /Users/admin/gp/commerce/./components/HeroBanner/hero-banner-content.tsx
+
+'use client';
+
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowRight, ChevronDown, Heart } from 'lucide-react';
+import Image from 'next/image';
+import { useState } from 'react';
+
+interface HeroBannerContentProps {
+  section: 'men' | 'women';
+  title: string;
+  description: string;
+  categories: string[];
+  featuredProduct: {
+    name: string;
+    price: string;
+    image: string;
+  };
+}
+
+// Define motion components with proper HTML element types
+const MotionH2 = motion.h2;
+const MotionP = motion.p;
+const MotionDiv = motion.div;
+const MotionButton = motion.button;
+
+export function HeroBannerContent({
+  section,
+  title,
+  description,
+  categories,
+  featuredProduct
+}: HeroBannerContentProps) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [showMobileCategories, setShowMobileCategories] = useState(false);
+
+  return (
+    <div
+      className="relative flex h-full flex-col items-center justify-center p-4 text-white sm:p-6 lg:p-8"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div className="absolute left-4 top-4 lg:hidden">
+        <span className="text-xs text-white/60">Swipe to explore</span>
+      </div>
+
+      <MotionH2
+        className="mb-2 text-4xl font-bold tracking-tight sm:mb-4 sm:text-5xl lg:text-7xl"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        {title}
+      </MotionH2>
+
+      <MotionP
+        className="mb-4 max-w-[280px] text-center text-base opacity-90 sm:mb-6 sm:max-w-md sm:text-lg lg:mb-8"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.2 }}
+      >
+        {description}
+      </MotionP>
+
+      {/* Desktop Categories */}
+      <div
+        className={`mb-8 hidden space-y-4 transition-opacity duration-500 lg:block ${
+          isHovered ? 'opacity-100' : 'opacity-0'
+        }`}
+      >
+        {categories.map((category) => (
+          <div key={category} className="cursor-pointer text-xl font-light hover:font-normal">
+            {category}
+          </div>
+        ))}
+      </div>
+
+      {/* Mobile Categories Panel */}
+      <div className="mb-4 w-full max-w-sm lg:hidden">
+        <button
+          onClick={() => setShowMobileCategories(!showMobileCategories)}
+          className="flex w-full items-center justify-between rounded-lg bg-white/10 px-4 py-2 backdrop-blur-sm"
+        >
+          <span>Browse Categories</span>
+          <ChevronDown
+            className={`h-5 w-5 transition-transform duration-300 ${
+              showMobileCategories ? 'rotate-180' : ''
+            }`}
+          />
+        </button>
+
+        <AnimatePresence>
+          {showMobileCategories && (
+            <MotionDiv
+              className="overflow-hidden"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+            >
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {categories.map((category) => (
+                  <div
+                    key={category}
+                    className="rounded-lg bg-white/20 px-3 py-2 text-center text-sm backdrop-blur-sm"
+                  >
+                    {category}
+                  </div>
+                ))}
+              </div>
+            </MotionDiv>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Featured Product - Mobile */}
+      <MotionDiv
+        className="mb-6 w-full max-w-sm overflow-hidden rounded-lg bg-white/10 backdrop-blur-sm lg:hidden"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+      >
+        <div className="relative h-40">
+          <Image
+            src={featuredProduct.image}
+            alt={featuredProduct.name}
+            fill
+            className="object-cover"
+          />
+          <button
+            className="absolute right-2 top-2 rounded-full bg-white/20 p-2 backdrop-blur-sm"
+            onClick={() => {
+              /* Add to wishlist */
+            }}
+          >
+            <Heart className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="p-4">
+          <h3 className="font-medium">{featuredProduct.name}</h3>
+          <p className="text-white/80">{featuredProduct.price}</p>
+        </div>
+      </MotionDiv>
+
+      {/* CTA Button */}
+      <MotionButton
+        className="group/btn flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm text-black transition-colors duration-300 hover:bg-black hover:text-white sm:px-8 sm:py-4 sm:text-base"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.6 }}
+        whileTap={{ scale: 0.98 }}
+      >
+        Shop {section === 'men' ? "Men's" : "Women's"}
+        <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/btn:translate-x-1 sm:h-5 sm:w-5" />
+      </MotionButton>
+    </div>
+  );
+}
+
+
+# Filename: ./components/HeroBanner/motion-types.ts
+# Path: /Users/admin/gp/commerce/./components/HeroBanner/motion-types.ts
+
+// components/HeroBanner/motion-types.ts
+'use client';
+
+import { motion } from 'framer-motion';
+
+export const MotionH2 = motion('h2');
+export const MotionP = motion('p');
+export const MotionDiv = motion('div');
+export const MotionButton = motion('button');
+
+
+# Filename: ./components/cart/close-cart.tsx
+# Path: /Users/admin/gp/commerce/./components/cart/close-cart.tsx
+
+import { XMarkIcon } from '@heroicons/react/24/outline';
+import clsx from 'clsx';
+
+export default function CloseCart({ className }: { className?: string }) {
+  return (
+    <div className="relative flex h-11 w-11 items-center justify-center rounded-md border border-neutral-200 text-black transition-colors dark:border-neutral-700 dark:text-white">
+      <XMarkIcon className={clsx('h-6 transition-all ease-in-out hover:scale-110', className)} />
+    </div>
+  );
+}
+
+
+# Filename: ./components/cart/edit-item-quantity-button.tsx
+# Path: /Users/admin/gp/commerce/./components/cart/edit-item-quantity-button.tsx
+
+'use client';
+
+import { MinusIcon, PlusIcon } from '@heroicons/react/24/outline';
+import clsx from 'clsx';
+import { updateItemQuantity } from 'components/cart/actions';
+import type { CartItem } from 'lib/shopify/types';
+import { useActionState } from 'react';
+
+function SubmitButton({ type }: { type: 'plus' | 'minus' }) {
+  return (
+    <button
+      type="submit"
+      aria-label={type === 'plus' ? 'Increase item quantity' : 'Reduce item quantity'}
+      className={clsx(
+        'ease flex h-full min-w-[36px] max-w-[36px] flex-none items-center justify-center rounded-full p-2 transition-all duration-200 hover:border-neutral-800 hover:opacity-80',
+        {
+          'ml-auto': type === 'minus'
+        }
+      )}
+    >
+      {type === 'plus' ? (
+        <PlusIcon className="h-4 w-4 dark:text-neutral-500" />
+      ) : (
+        <MinusIcon className="h-4 w-4 dark:text-neutral-500" />
+      )}
+    </button>
+  );
+}
+
+export function EditItemQuantityButton({
+  item,
+  type,
+  optimisticUpdate
+}: {
+  item: CartItem;
+  type: 'plus' | 'minus';
+  optimisticUpdate: any;
+}) {
+  const [message, formAction] = useActionState(updateItemQuantity, null);
+  const payload = {
+    merchandiseId: item.merchandise.id,
+    quantity: type === 'plus' ? item.quantity + 1 : item.quantity - 1
+  };
+  const actionWithVariant = formAction.bind(null, payload);
+
+  return (
+    <form
+      action={async () => {
+        optimisticUpdate(payload.merchandiseId, type);
+        await actionWithVariant();
+      }}
+    >
+      <SubmitButton type={type} />
+      <p aria-live="polite" className="sr-only" role="status">
+        {message}
+      </p>
+    </form>
+  );
+}
+
+
+# Filename: ./components/cart/open-cart.tsx
+# Path: /Users/admin/gp/commerce/./components/cart/open-cart.tsx
+
+import { ShoppingCartIcon } from '@heroicons/react/24/outline';
+import clsx from 'clsx';
+
+export default function OpenCart({
+  className,
+  quantity
+}: {
+  className?: string;
+  quantity?: number;
+}) {
+  return (
+    <div className="relative flex h-11 w-11 items-center justify-center rounded-md border border-neutral-200 text-black transition-colors dark:border-neutral-700 dark:text-white">
+      <ShoppingCartIcon
+        className={clsx('h-4 transition-all ease-in-out hover:scale-110', className)}
+      />
+
+      {quantity ? (
+        <div className="absolute right-0 top-0 -mr-2 -mt-2 h-4 w-4 rounded bg-blue-600 text-[11px] font-medium text-white">
+          {quantity}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+
+# Filename: ./components/cart/cart-context.tsx
+# Path: /Users/admin/gp/commerce/./components/cart/cart-context.tsx
+
+'use client';
+
+import type { Cart, CartItem, Product, ProductVariant } from 'lib/shopify/types';
+import React, { createContext, use, useContext, useMemo, useOptimistic } from 'react';
+
+type UpdateType = 'plus' | 'minus' | 'delete';
+
+type CartAction =
+  | { type: 'UPDATE_ITEM'; payload: { merchandiseId: string; updateType: UpdateType } }
+  | { type: 'ADD_ITEM'; payload: { variant: ProductVariant; product: Product } };
+
+type CartContextType = {
+  cart: Cart | undefined;
+  updateCartItem: (merchandiseId: string, updateType: UpdateType) => void;
+  addCartItem: (variant: ProductVariant, product: Product) => void;
+};
+
+const CartContext = createContext<CartContextType | undefined>(undefined);
+
+function calculateItemCost(quantity: number, price: string): string {
+  return (Number(price) * quantity).toString();
+}
+
+function updateCartItem(item: CartItem, updateType: UpdateType): CartItem | null {
+  if (updateType === 'delete') return null;
+
+  const newQuantity = updateType === 'plus' ? item.quantity + 1 : item.quantity - 1;
+  if (newQuantity === 0) return null;
+
+  const singleItemAmount = Number(item.cost.totalAmount.amount) / item.quantity;
+  const newTotalAmount = calculateItemCost(newQuantity, singleItemAmount.toString());
+
+  return {
+    ...item,
+    quantity: newQuantity,
+    cost: {
+      ...item.cost,
+      totalAmount: {
+        ...item.cost.totalAmount,
+        amount: newTotalAmount
+      }
+    }
+  };
+}
+
+function createOrUpdateCartItem(
+  existingItem: CartItem | undefined,
+  variant: ProductVariant,
+  product: Product
+): CartItem {
+  const quantity = existingItem ? existingItem.quantity + 1 : 1;
+  const totalAmount = calculateItemCost(quantity, variant.price.amount);
+
+  return {
+    id: existingItem?.id,
+    quantity,
+    cost: {
+      totalAmount: {
+        amount: totalAmount,
+        currencyCode: variant.price.currencyCode
+      }
+    },
+    merchandise: {
+      id: variant.id,
+      title: variant.title,
+      selectedOptions: variant.selectedOptions,
+      product: {
+        id: product.id,
+        handle: product.handle,
+        title: product.title,
+        featuredImage: product.featuredImage
+      }
+    }
+  };
+}
+
+function updateCartTotals(lines: CartItem[]): Pick<Cart, 'totalQuantity' | 'cost'> {
+  const totalQuantity = lines.reduce((sum, item) => sum + item.quantity, 0);
+  const totalAmount = lines.reduce((sum, item) => sum + Number(item.cost.totalAmount.amount), 0);
+  const currencyCode = lines[0]?.cost.totalAmount.currencyCode ?? 'USD';
+
+  return {
+    totalQuantity,
+    cost: {
+      subtotalAmount: { amount: totalAmount.toString(), currencyCode },
+      totalAmount: { amount: totalAmount.toString(), currencyCode },
+      totalTaxAmount: { amount: '0', currencyCode }
+    }
+  };
+}
+
+function createEmptyCart(): Cart {
+  return {
+    id: undefined,
+    checkoutUrl: '',
+    totalQuantity: 0,
+    lines: [],
+    cost: {
+      subtotalAmount: { amount: '0', currencyCode: 'USD' },
+      totalAmount: { amount: '0', currencyCode: 'USD' },
+      totalTaxAmount: { amount: '0', currencyCode: 'USD' }
+    }
+  };
+}
+
+function cartReducer(state: Cart | undefined, action: CartAction): Cart {
+  const currentCart = state || createEmptyCart();
+
+  switch (action.type) {
+    case 'UPDATE_ITEM': {
+      const { merchandiseId, updateType } = action.payload;
+      const updatedLines = currentCart.lines
+        .map((item) =>
+          item.merchandise.id === merchandiseId ? updateCartItem(item, updateType) : item
+        )
+        .filter(Boolean) as CartItem[];
+
+      if (updatedLines.length === 0) {
+        return {
+          ...currentCart,
+          lines: [],
+          totalQuantity: 0,
+          cost: {
+            ...currentCart.cost,
+            totalAmount: { ...currentCart.cost.totalAmount, amount: '0' }
+          }
+        };
+      }
+
+      return { ...currentCart, ...updateCartTotals(updatedLines), lines: updatedLines };
+    }
+    case 'ADD_ITEM': {
+      const { variant, product } = action.payload;
+      const existingItem = currentCart.lines.find((item) => item.merchandise.id === variant.id);
+      const updatedItem = createOrUpdateCartItem(existingItem, variant, product);
+
+      const updatedLines = existingItem
+        ? currentCart.lines.map((item) => (item.merchandise.id === variant.id ? updatedItem : item))
+        : [...currentCart.lines, updatedItem];
+
+      return { ...currentCart, ...updateCartTotals(updatedLines), lines: updatedLines };
+    }
+    default:
+      return currentCart;
+  }
+}
+
+export function CartProvider({
+  children,
+  cartPromise
+}: {
+  children: React.ReactNode;
+  cartPromise: Promise<Cart | undefined>;
+}) {
+  const initialCart = use(cartPromise);
+  const [optimisticCart, updateOptimisticCart] = useOptimistic(initialCart, cartReducer);
+
+  const updateCartItem = (merchandiseId: string, updateType: UpdateType) => {
+    updateOptimisticCart({ type: 'UPDATE_ITEM', payload: { merchandiseId, updateType } });
+  };
+
+  const addCartItem = (variant: ProductVariant, product: Product) => {
+    updateOptimisticCart({ type: 'ADD_ITEM', payload: { variant, product } });
+  };
+
+  const value = useMemo(
+    () => ({
+      cart: optimisticCart,
+      updateCartItem,
+      addCartItem
+    }),
+    [optimisticCart]
+  );
+
+  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
+}
+
+export function useCart() {
+  const context = useContext(CartContext);
+  if (context === undefined) {
+    throw new Error('useCart must be used within a CartProvider');
+  }
+  return context;
+}
+
+
+# Filename: ./components/cart/actions.ts
+# Path: /Users/admin/gp/commerce/./components/cart/actions.ts
+
+'use server';
+
+import { TAGS } from 'lib/constants';
+import { addToCart, createCart, getCart, removeFromCart, updateCart } from 'lib/shopify';
+import { revalidateTag } from 'next/cache';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+
+export async function addItem(prevState: any, selectedVariantId: string | undefined) {
+  let cartId = (await cookies()).get('cartId')?.value;
+
+  if (!cartId || !selectedVariantId) {
+    return 'Error adding item to cart';
+  }
+
+  try {
+    await addToCart(cartId, [{ merchandiseId: selectedVariantId, quantity: 1 }]);
+    revalidateTag(TAGS.cart);
+  } catch (e) {
+    return 'Error adding item to cart';
+  }
+}
+
+export async function removeItem(prevState: any, merchandiseId: string) {
+  let cartId = (await cookies()).get('cartId')?.value;
+
+  if (!cartId) {
+    return 'Missing cart ID';
+  }
+
+  try {
+    const cart = await getCart(cartId);
+
+    if (!cart) {
+      return 'Error fetching cart';
+    }
+
+    const lineItem = cart.lines.find((line) => line.merchandise.id === merchandiseId);
+
+    if (lineItem && lineItem.id) {
+      await removeFromCart(cartId, [lineItem.id]);
+      revalidateTag(TAGS.cart);
+    } else {
+      return 'Item not found in cart';
+    }
+  } catch (e) {
+    return 'Error removing item from cart';
+  }
+}
+
+export async function updateItemQuantity(
+  prevState: any,
+  payload: {
+    merchandiseId: string;
+    quantity: number;
+  }
+) {
+  let cartId = (await cookies()).get('cartId')?.value;
+
+  if (!cartId) {
+    return 'Missing cart ID';
+  }
+
+  const { merchandiseId, quantity } = payload;
+
+  try {
+    const cart = await getCart(cartId);
+
+    if (!cart) {
+      return 'Error fetching cart';
+    }
+
+    const lineItem = cart.lines.find((line) => line.merchandise.id === merchandiseId);
+
+    if (lineItem && lineItem.id) {
+      if (quantity === 0) {
+        await removeFromCart(cartId, [lineItem.id]);
+      } else {
+        await updateCart(cartId, [
+          {
+            id: lineItem.id,
+            merchandiseId,
+            quantity
+          }
+        ]);
+      }
+    } else if (quantity > 0) {
+      // If the item doesn't exist in the cart and quantity > 0, add it
+      await addToCart(cartId, [{ merchandiseId, quantity }]);
+    }
+
+    revalidateTag(TAGS.cart);
+  } catch (e) {
+    console.error(e);
+    return 'Error updating item quantity';
+  }
+}
+
+export async function redirectToCheckout() {
+  let cartId = (await cookies()).get('cartId')?.value;
+
+  if (!cartId) {
+    return 'Missing cart ID';
+  }
+
+  let cart = await getCart(cartId);
+
+  if (!cart) {
+    return 'Error fetching cart';
+  }
+
+  redirect(cart.checkoutUrl);
+}
+
+export async function createCartAndSetCookie() {
+  let cart = await createCart();
+  (await cookies()).set('cartId', cart.id!);
+}
+
+
+# Filename: ./components/cart/delete-item-button.tsx
+# Path: /Users/admin/gp/commerce/./components/cart/delete-item-button.tsx
+
+'use client';
+
+import { XMarkIcon } from '@heroicons/react/24/outline';
+import { removeItem } from 'components/cart/actions';
+import type { CartItem } from 'lib/shopify/types';
+import { useActionState } from 'react';
+
+export function DeleteItemButton({
+  item,
+  optimisticUpdate
+}: {
+  item: CartItem;
+  optimisticUpdate: any;
+}) {
+  const [message, formAction] = useActionState(removeItem, null);
+  const merchandiseId = item.merchandise.id;
+  const actionWithVariant = formAction.bind(null, merchandiseId);
+
+  return (
+    <form
+      action={async () => {
+        optimisticUpdate(merchandiseId, 'delete');
+        await actionWithVariant();
+      }}
+    >
+      <button
+        type="submit"
+        aria-label="Remove cart item"
+        className="flex h-[24px] w-[24px] items-center justify-center rounded-full bg-neutral-500"
+      >
+        <XMarkIcon className="mx-[1px] h-4 w-4 text-white dark:text-black" />
+      </button>
+      <p aria-live="polite" className="sr-only" role="status">
+        {message}
+      </p>
+    </form>
+  );
+}
+
+
+# Filename: ./components/cart/add-to-cart.tsx
+# Path: /Users/admin/gp/commerce/./components/cart/add-to-cart.tsx
+
+'use client';
+
+import { PlusIcon } from '@heroicons/react/24/outline';
+import clsx from 'clsx';
+import { addItem } from 'components/cart/actions';
+import { useProduct } from 'components/product/product-context';
+import { Product, ProductVariant } from 'lib/shopify/types';
+import { useActionState } from 'react';
+import { useCart } from './cart-context';
+
+function SubmitButton({
+  availableForSale,
+  selectedVariantId
+}: {
+  availableForSale: boolean;
+  selectedVariantId: string | undefined;
+}) {
+  const buttonClasses =
+    'relative flex w-full items-center justify-center rounded-full bg-blue-600 p-4 tracking-wide text-white';
+  const disabledClasses = 'cursor-not-allowed opacity-60 hover:opacity-60';
+
+  if (!availableForSale) {
+    return (
+      <button disabled className={clsx(buttonClasses, disabledClasses)}>
+        Out Of Stock
+      </button>
+    );
+  }
+
+  console.log(selectedVariantId);
+  if (!selectedVariantId) {
+    return (
+      <button
+        aria-label="Please select an option"
+        disabled
+        className={clsx(buttonClasses, disabledClasses)}
+      >
+        <div className="absolute left-0 ml-4">
+          <PlusIcon className="h-5" />
+        </div>
+        Add To Cart
+      </button>
+    );
+  }
+
+  return (
+    <button
+      aria-label="Add to cart"
+      className={clsx(buttonClasses, {
+        'hover:opacity-90': true
+      })}
+    >
+      <div className="absolute left-0 ml-4">
+        <PlusIcon className="h-5" />
+      </div>
+      Add To Cart
+    </button>
+  );
+}
+
+export function AddToCart({ product }: { product: Product }) {
+  const { variants, availableForSale } = product;
+  const { addCartItem } = useCart();
+  const { state } = useProduct();
+  const [message, formAction] = useActionState(addItem, null);
+
+  const variant = variants.find((variant: ProductVariant) =>
+    variant.selectedOptions.every((option) => option.value === state[option.name.toLowerCase()])
+  );
+  const defaultVariantId = variants.length === 1 ? variants[0]?.id : undefined;
+  const selectedVariantId = variant?.id || defaultVariantId;
+  const actionWithVariant = formAction.bind(null, selectedVariantId);
+  const finalVariant = variants.find((variant) => variant.id === selectedVariantId)!;
+
+  return (
+    <form
+      action={async () => {
+        addCartItem(finalVariant, product);
+        await actionWithVariant();
+      }}
+    >
+      <SubmitButton availableForSale={availableForSale} selectedVariantId={selectedVariantId} />
+      <p aria-live="polite" className="sr-only" role="status">
+        {message}
+      </p>
+    </form>
+  );
+}
+
+
+# Filename: ./components/cart/modal.tsx
+# Path: /Users/admin/gp/commerce/./components/cart/modal.tsx
+
+'use client';
+
+import { Dialog, Transition } from '@headlessui/react';
+import { ShoppingCartIcon } from '@heroicons/react/24/outline';
+import LoadingDots from 'components/loading-dots';
+import Price from 'components/price';
+import { DEFAULT_OPTION } from 'lib/constants';
+import { createUrl } from 'lib/utils';
+import Image from 'next/image';
+import Link from 'next/link';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { useFormStatus } from 'react-dom';
+import { createCartAndSetCookie, redirectToCheckout } from './actions';
+import { useCart } from './cart-context';
+import CloseCart from './close-cart';
+import { DeleteItemButton } from './delete-item-button';
+import { EditItemQuantityButton } from './edit-item-quantity-button';
+import OpenCart from './open-cart';
+
+type MerchandiseSearchParams = {
+  [key: string]: string;
+};
+
+export default function CartModal() {
+  const { cart, updateCartItem } = useCart();
+  const [isOpen, setIsOpen] = useState(false);
+  const quantityRef = useRef(cart?.totalQuantity);
+  const openCart = () => setIsOpen(true);
+  const closeCart = () => setIsOpen(false);
+
+  useEffect(() => {
+    if (!cart) {
+      createCartAndSetCookie();
+    }
+  }, [cart]);
+
+  useEffect(() => {
+    if (
+      cart?.totalQuantity &&
+      cart?.totalQuantity !== quantityRef.current &&
+      cart?.totalQuantity > 0
+    ) {
+      if (!isOpen) {
+        setIsOpen(true);
+      }
+      quantityRef.current = cart?.totalQuantity;
+    }
+  }, [isOpen, cart?.totalQuantity, quantityRef]);
+
+  return (
+    <>
+      <button aria-label="Open cart" onClick={openCart}>
+        <OpenCart quantity={cart?.totalQuantity} />
+      </button>
+      <Transition show={isOpen}>
+        <Dialog onClose={closeCart} className="relative z-50">
+          <Transition.Child
+            as={Fragment}
+            enter="transition-all ease-in-out duration-300"
+            enterFrom="opacity-0 backdrop-blur-none"
+            enterTo="opacity-100 backdrop-blur-[.5px]"
+            leave="transition-all ease-in-out duration-200"
+            leaveFrom="opacity-100 backdrop-blur-[.5px]"
+            leaveTo="opacity-0 backdrop-blur-none"
+          >
+            <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
+          </Transition.Child>
+          <Transition.Child
+            as={Fragment}
+            enter="transition-all ease-in-out duration-300"
+            enterFrom="translate-x-full"
+            enterTo="translate-x-0"
+            leave="transition-all ease-in-out duration-200"
+            leaveFrom="translate-x-0"
+            leaveTo="translate-x-full"
+          >
+            <Dialog.Panel className="fixed bottom-0 right-0 top-0 flex h-full w-full flex-col border-l border-neutral-200 bg-white/80 p-6 text-black backdrop-blur-xl md:w-[390px] dark:border-neutral-700 dark:bg-black/80 dark:text-white">
+              <div className="flex items-center justify-between">
+                <p className="text-lg font-semibold">My Cart</p>
+                <button aria-label="Close cart" onClick={closeCart}>
+                  <CloseCart />
+                </button>
+              </div>
+
+              {!cart || cart.lines.length === 0 ? (
+                <div className="mt-20 flex w-full flex-col items-center justify-center overflow-hidden">
+                  <ShoppingCartIcon className="h-16" />
+                  <p className="mt-6 text-center text-2xl font-bold">Your cart is empty.</p>
+                </div>
+              ) : (
+                <div className="flex h-full flex-col justify-between overflow-hidden p-1">
+                  <ul className="flex-grow overflow-auto py-4">
+                    {cart.lines
+                      .sort((a, b) =>
+                        a.merchandise.product.title.localeCompare(b.merchandise.product.title)
+                      )
+                      .map((item, i) => {
+                        const merchandiseSearchParams = {} as MerchandiseSearchParams;
+
+                        item.merchandise.selectedOptions.forEach(({ name, value }) => {
+                          if (value !== DEFAULT_OPTION) {
+                            merchandiseSearchParams[name.toLowerCase()] = value;
+                          }
+                        });
+
+                        const merchandiseUrl = createUrl(
+                          `/product/${item.merchandise.product.handle}`,
+                          new URLSearchParams(merchandiseSearchParams)
+                        );
+
+                        return (
+                          <li
+                            key={i}
+                            className="flex w-full flex-col border-b border-neutral-300 dark:border-neutral-700"
+                          >
+                            <div className="relative flex w-full flex-row justify-between px-1 py-4">
+                              <div className="absolute z-40 -ml-1 -mt-2">
+                                <DeleteItemButton item={item} optimisticUpdate={updateCartItem} />
+                              </div>
+                              <div className="flex flex-row">
+                                <div className="relative h-16 w-16 overflow-hidden rounded-md border border-neutral-300 bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800">
+                                  <Image
+                                    className="h-full w-full object-cover"
+                                    width={64}
+                                    height={64}
+                                    alt={
+                                      item.merchandise.product.featuredImage.altText ||
+                                      item.merchandise.product.title
+                                    }
+                                    src={item.merchandise.product.featuredImage.url}
+                                  />
+                                </div>
+                                <Link
+                                  href={merchandiseUrl}
+                                  onClick={closeCart}
+                                  className="z-30 ml-2 flex flex-row space-x-4"
+                                >
+                                  <div className="flex flex-1 flex-col text-base">
+                                    <span className="leading-tight">
+                                      {item.merchandise.product.title}
+                                    </span>
+                                    {item.merchandise.title !== DEFAULT_OPTION ? (
+                                      <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                                        {item.merchandise.title}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                </Link>
+                              </div>
+                              <div className="flex h-16 flex-col justify-between">
+                                <Price
+                                  className="flex justify-end space-y-2 text-right text-sm"
+                                  amount={item.cost.totalAmount.amount}
+                                  currencyCode={item.cost.totalAmount.currencyCode}
+                                />
+                                <div className="ml-auto flex h-9 flex-row items-center rounded-full border border-neutral-200 dark:border-neutral-700">
+                                  <EditItemQuantityButton
+                                    item={item}
+                                    type="minus"
+                                    optimisticUpdate={updateCartItem}
+                                  />
+                                  <p className="w-6 text-center">
+                                    <span className="w-full text-sm">{item.quantity}</span>
+                                  </p>
+                                  <EditItemQuantityButton
+                                    item={item}
+                                    type="plus"
+                                    optimisticUpdate={updateCartItem}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                  </ul>
+                  <div className="py-4 text-sm text-neutral-500 dark:text-neutral-400">
+                    <div className="mb-3 flex items-center justify-between border-b border-neutral-200 pb-1 dark:border-neutral-700">
+                      <p>Taxes</p>
+                      <Price
+                        className="text-right text-base text-black dark:text-white"
+                        amount={cart.cost.totalTaxAmount.amount}
+                        currencyCode={cart.cost.totalTaxAmount.currencyCode}
+                      />
+                    </div>
+                    <div className="mb-3 flex items-center justify-between border-b border-neutral-200 pb-1 pt-1 dark:border-neutral-700">
+                      <p>Shipping</p>
+                      <p className="text-right">Calculated at checkout</p>
+                    </div>
+                    <div className="mb-3 flex items-center justify-between border-b border-neutral-200 pb-1 pt-1 dark:border-neutral-700">
+                      <p>Total</p>
+                      <Price
+                        className="text-right text-base text-black dark:text-white"
+                        amount={cart.cost.totalAmount.amount}
+                        currencyCode={cart.cost.totalAmount.currencyCode}
+                      />
+                    </div>
+                  </div>
+                  <form action={redirectToCheckout}>
+                    <CheckoutButton />
+                  </form>
+                </div>
+              )}
+            </Dialog.Panel>
+          </Transition.Child>
+        </Dialog>
+      </Transition>
+    </>
+  );
+}
+
+function CheckoutButton() {
+  const { pending } = useFormStatus();
+
+  return (
+    <button
+      className="block w-full rounded-full bg-blue-600 p-3 text-center text-sm font-medium text-white opacity-90 hover:opacity-100"
+      type="submit"
+      disabled={pending}
+    >
+      {pending ? <LoadingDots className="bg-white" /> : 'Proceed to Checkout'}
+    </button>
+  );
+}
+
+
+# Filename: ./components/loading-dots.tsx
+# Path: /Users/admin/gp/commerce/./components/loading-dots.tsx
+
+import clsx from 'clsx';
+
+const dots = 'mx-[1px] inline-block h-1 w-1 animate-blink rounded-md';
+
+const LoadingDots = ({ className }: { className: string }) => {
+  return (
+    <span className="mx-2 inline-flex items-center">
+      <span className={clsx(dots, className)} />
+      <span className={clsx(dots, 'animation-delay-[200ms]', className)} />
+      <span className={clsx(dots, 'animation-delay-[400ms]', className)} />
+    </span>
+  );
+};
+
+export default LoadingDots;
+
+
+# Filename: ./components/grid/index.tsx
+# Path: /Users/admin/gp/commerce/./components/grid/index.tsx
+
+import clsx from 'clsx';
+
+function Grid(props: React.ComponentProps<'ul'>) {
+  return (
+    <ul {...props} className={clsx('grid grid-flow-row gap-4', props.className)}>
+      {props.children}
+    </ul>
+  );
+}
+
+function GridItem(props: React.ComponentProps<'li'>) {
+  return (
+    <li {...props} className={clsx('aspect-square transition-opacity', props.className)}>
+      {props.children}
+    </li>
+  );
+}
+
+Grid.Item = GridItem;
+
+export default Grid;
+
+
+# Filename: ./components/grid/three-items.tsx
+# Path: /Users/admin/gp/commerce/./components/grid/three-items.tsx
+
+import { GridTileImage } from 'components/grid/tile';
+import { getCollectionProducts } from 'lib/shopify';
+import type { Product } from 'lib/shopify/types';
+import Link from 'next/link';
+
+function ThreeItemGridItem({
+  item,
+  size,
+  priority
+}: {
+  item: Product;
+  size: 'full' | 'half';
+  priority?: boolean;
+}) {
+  return (
+    <div
+      className={size === 'full' ? 'md:col-span-4 md:row-span-2' : 'md:col-span-2 md:row-span-1'}
+    >
+      <Link
+        className="relative block aspect-square h-full w-full"
+        href={`/product/${item.handle}`}
+        prefetch={true}
+      >
+        <GridTileImage
+          src={item.featuredImage.url}
+          fill
+          sizes={
+            size === 'full' ? '(min-width: 768px) 66vw, 100vw' : '(min-width: 768px) 33vw, 100vw'
+          }
+          priority={priority}
+          alt={item.title}
+          label={{
+            position: size === 'full' ? 'center' : 'bottom',
+            title: item.title as string,
+            amount: item.priceRange.maxVariantPrice.amount,
+            currencyCode: item.priceRange.maxVariantPrice.currencyCode
+          }}
+        />
+      </Link>
+    </div>
+  );
+}
+
+export async function ThreeItemGrid() {
+  // Collections that start with `hidden-*` are hidden from the search page.
+  const homepageItems = await getCollectionProducts({
+    collection: 'mens'
+  });
+
+  if (!homepageItems[0] || !homepageItems[1] || !homepageItems[2]) return null;
+
+  const [firstProduct, secondProduct, thirdProduct] = homepageItems;
+
+  return (
+    <section className="mx-auto grid max-w-screen-2xl gap-4 px-4 pb-4 md:grid-cols-6 md:grid-rows-2 lg:max-h-[calc(100vh-200px)]">
+      <ThreeItemGridItem size="full" item={firstProduct} priority={true} />
+      <ThreeItemGridItem size="half" item={secondProduct} priority={true} />
+      <ThreeItemGridItem size="half" item={thirdProduct} />
+    </section>
+  );
+}
+
+
+# Filename: ./components/grid/tile.tsx
+# Path: /Users/admin/gp/commerce/./components/grid/tile.tsx
+
+import clsx from 'clsx';
+import Image from 'next/image';
+import Label from '../label';
+
+export function GridTileImage({
+  isInteractive = true,
+  active,
+  label,
+  ...props
+}: {
+  isInteractive?: boolean;
+  active?: boolean;
+  label?: {
+    title: string;
+    amount: string;
+    currencyCode: string;
+    position?: 'bottom' | 'center';
+  };
+} & React.ComponentProps<typeof Image>) {
+  return (
+    <div
+      className={clsx(
+        'group flex h-full w-full items-center justify-center overflow-hidden rounded-lg border bg-white hover:border-blue-600 dark:bg-black',
+        {
+          relative: label,
+          'border-2 border-blue-600': active,
+          'border-neutral-200 dark:border-neutral-800': !active
+        }
+      )}
+    >
+      {props.src ? (
+        <Image
+          className={clsx('relative h-full w-full object-contain', {
+            'transition duration-300 ease-in-out group-hover:scale-105': isInteractive
+          })}
+          {...props}
+        />
+      ) : null}
+      {label ? (
+        <Label
+          title={label.title}
+          amount={label.amount}
+          currencyCode={label.currencyCode}
+          position={label.position}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+
+# Filename: ./components/carousel.tsx
+# Path: /Users/admin/gp/commerce/./components/carousel.tsx
+
+import { getCollectionProducts } from 'lib/shopify';
+import Link from 'next/link';
+import { GridTileImage } from './grid/tile';
+
+export async function Carousel() {
+  // Collections that start with `hidden-*` are hidden from the search page.
+  const products = await getCollectionProducts({ collection: 'hidden-homepage-carousel' });
+
+  if (!products?.length) return null;
+
+  // Purposefully duplicating products to make the carousel loop and not run out of products on wide screens.
+  const carouselProducts = [...products, ...products, ...products];
+
+  return (
+    <div className="w-full overflow-x-auto pb-6 pt-1">
+      <ul className="flex animate-carousel gap-4">
+        {carouselProducts.map((product, i) => (
+          <li
+            key={`${product.handle}${i}`}
+            className="relative aspect-square h-[30vh] max-h-[275px] w-2/3 max-w-[475px] flex-none md:w-1/3"
+          >
+            <Link href={`/product/${product.handle}`} className="relative h-full w-full">
+              <GridTileImage
+                alt={product.title}
+                label={{
+                  title: product.title,
+                  amount: product.priceRange.maxVariantPrice.amount,
+                  currencyCode: product.priceRange.maxVariantPrice.currencyCode
+                }}
+                src={product.featuredImage?.url}
+                fill
+                sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw"
+              />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+
+# Filename: ./scripts/setup-db.ts
+# Path: /Users/admin/gp/commerce/./scripts/setup-db.ts
+
+// scripts/setup-db.ts
+
+const { PrismaClient } = require('@prisma/client');
+const { hash } = require('bcryptjs');
+
+const prisma = new PrismaClient();
+
+async function main() {
+  try {
+    // Create admin user
+    const password = await hash('admin123', 12);
+    const admin = await prisma.user.upsert({
+      where: { email: 'admin@example.com' },
+      update: {},
+      create: {
+        email: 'admin@example.com',
+        name: 'Admin User',
+        password,
+        role: 'ADMIN'
+      }
+    });
+
+    console.log('✅ Database has been seeded:', {
+      admin: admin.email
+    });
+  } catch (error) {
+    console.error('❌ Error seeding database:', error);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+main();
+
+
+# Filename: ./scripts/test-connection.ts
+# Path: /Users/admin/gp/commerce/./scripts/test-connection.ts
+
+// scripts/test-connection.ts
+
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+async function testConnection() {
+  try {
+    await prisma.$connect();
+    console.log('✅ Successfully connected to PostgreSQL');
+
+    // Test database access
+    const tables = await prisma.$queryRaw`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public';
+    `;
+    console.log('Existing tables:', tables);
+  } catch (error) {
+    console.error('❌ Connection failed:', error);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+testConnection();
+
+
+# Filename: ./lib/type-guards.ts
+# Path: /Users/admin/gp/commerce/./lib/type-guards.ts
+
+export interface ShopifyErrorLike {
+  status: number;
+  message: Error;
+  cause?: Error;
+}
+
+export const isObject = (object: unknown): object is Record<string, unknown> => {
+  return typeof object === 'object' && object !== null && !Array.isArray(object);
+};
+
+export const isShopifyError = (error: unknown): error is ShopifyErrorLike => {
+  if (!isObject(error)) return false;
+
+  if (error instanceof Error) return true;
+
+  return findError(error);
+};
+
+function findError<T extends object>(error: T): boolean {
+  if (Object.prototype.toString.call(error) === '[object Error]') {
+    return true;
+  }
+
+  const prototype = Object.getPrototypeOf(error) as T | null;
+
+  return prototype === null ? false : findError(prototype);
+}
+
+
+# Filename: ./lib/shopify/fragments/image.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/fragments/image.ts
+
+const imageFragment = /* GraphQL */ `
+  fragment image on Image {
+    url
+    altText
+    width
+    height
+  }
+`;
+
+export default imageFragment;
+
+
+# Filename: ./lib/shopify/fragments/product.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/fragments/product.ts
+
+import imageFragment from './image';
+import seoFragment from './seo';
+
+const productFragment = /* GraphQL */ `
+  fragment product on Product {
+    id
+    handle
+    availableForSale
+    title
+    description
+    descriptionHtml
+    options {
+      id
+      name
+      values
+    }
+    priceRange {
+      maxVariantPrice {
+        amount
+        currencyCode
+      }
+      minVariantPrice {
+        amount
+        currencyCode
+      }
+    }
+    variants(first: 250) {
+      edges {
+        node {
+          id
+          title
+          availableForSale
+          selectedOptions {
+            name
+            value
+          }
+          price {
+            amount
+            currencyCode
+          }
+        }
+      }
+    }
+    featuredImage {
+      ...image
+    }
+    images(first: 20) {
+      edges {
+        node {
+          ...image
+        }
+      }
+    }
+    seo {
+      ...seo
+    }
+    tags
+    updatedAt
+  }
+  ${imageFragment}
+  ${seoFragment}
+`;
+
+export default productFragment;
+
+
+# Filename: ./lib/shopify/fragments/seo.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/fragments/seo.ts
+
+const seoFragment = /* GraphQL */ `
+  fragment seo on SEO {
+    description
+    title
+  }
+`;
+
+export default seoFragment;
+
+
+# Filename: ./lib/shopify/fragments/cart.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/fragments/cart.ts
+
+import productFragment from './product';
+
+const cartFragment = /* GraphQL */ `
+  fragment cart on Cart {
+    id
+    checkoutUrl
+    cost {
+      subtotalAmount {
+        amount
+        currencyCode
+      }
+      totalAmount {
+        amount
+        currencyCode
+      }
+      totalTaxAmount {
+        amount
+        currencyCode
+      }
+    }
+    lines(first: 100) {
+      edges {
+        node {
+          id
+          quantity
+          cost {
+            totalAmount {
+              amount
+              currencyCode
+            }
+          }
+          merchandise {
+            ... on ProductVariant {
+              id
+              title
+              selectedOptions {
+                name
+                value
+              }
+              product {
+                ...product
+              }
+            }
+          }
+        }
+      }
+    }
+    totalQuantity
+  }
+  ${productFragment}
+`;
+
+export default cartFragment;
+
+
+# Filename: ./lib/shopify/errors.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/errors.ts
+
+// File: /lib/shopify/errors.ts
+
+export interface ShopifyError extends Error {
+  code: string;
+  statusCode?: number;
+  source?: string;
+}
+
+export interface ShopifyErrorResponse {
+  errors: {
+    message: string;
+    code?: string;
+    fields?: string[];
+  }[];
+}
+
+export class ShopifyAPIError extends Error implements ShopifyError {
+  code: string;
+  statusCode?: number;
+  source?: string;
+
+  constructor(message: string, code: string, statusCode?: number, source?: string) {
+    super(message);
+    this.name = 'ShopifyAPIError';
+    this.code = code;
+    this.statusCode = statusCode;
+    this.source = source;
+  }
+}
+
+
+# Filename: ./lib/shopify/mutations/cart.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/mutations/cart.ts
+
+import cartFragment from '../fragments/cart';
+
+export const addToCartMutation = /* GraphQL */ `
+  mutation addToCart($cartId: ID!, $lines: [CartLineInput!]!) {
+    cartLinesAdd(cartId: $cartId, lines: $lines) {
+      cart {
+        ...cart
+      }
+    }
+  }
+  ${cartFragment}
+`;
+
+export const createCartMutation = /* GraphQL */ `
+  mutation createCart($lineItems: [CartLineInput!]) {
+    cartCreate(input: { lines: $lineItems }) {
+      cart {
+        ...cart
+      }
+    }
+  }
+  ${cartFragment}
+`;
+
+export const editCartItemsMutation = /* GraphQL */ `
+  mutation editCartItems($cartId: ID!, $lines: [CartLineUpdateInput!]!) {
+    cartLinesUpdate(cartId: $cartId, lines: $lines) {
+      cart {
+        ...cart
+      }
+    }
+  }
+  ${cartFragment}
+`;
+
+export const removeFromCartMutation = /* GraphQL */ `
+  mutation removeFromCart($cartId: ID!, $lineIds: [ID!]!) {
+    cartLinesRemove(cartId: $cartId, lineIds: $lineIds) {
+      cart {
+        ...cart
+      }
+    }
+  }
+  ${cartFragment}
+`;
+
+
+# Filename: ./lib/shopify/queries/product.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/queries/product.ts
+
+import productFragment from '../fragments/product';
+
+export const getProductQuery = /* GraphQL */ `
+  query getProduct($handle: String!) {
+    product(handle: $handle) {
+      ...product
+    }
+  }
+  ${productFragment}
+`;
+
+export const getProductsQuery = /* GraphQL */ `
+  query getProducts($sortKey: ProductSortKeys, $reverse: Boolean, $query: String) {
+    products(sortKey: $sortKey, reverse: $reverse, query: $query, first: 100) {
+      edges {
+        node {
+          ...product
+        }
+      }
+    }
+  }
+  ${productFragment}
+`;
+
+export const getProductRecommendationsQuery = /* GraphQL */ `
+  query getProductRecommendations($productId: ID!) {
+    productRecommendations(productId: $productId) {
+      ...product
+    }
+  }
+  ${productFragment}
+`;
+
+
+# Filename: ./lib/shopify/queries/collection.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/queries/collection.ts
+
+import productFragment from '../fragments/product';
+import seoFragment from '../fragments/seo';
+
+const collectionFragment = /* GraphQL */ `
+  fragment collection on Collection {
+    handle
+    title
+    description
+    seo {
+      ...seo
+    }
+    updatedAt
+  }
+  ${seoFragment}
+`;
+
+export const getCollectionQuery = /* GraphQL */ `
+  query getCollection($handle: String!) {
+    collection(handle: $handle) {
+      ...collection
+    }
+  }
+  ${collectionFragment}
+`;
+
+export const getCollectionsQuery = /* GraphQL */ `
+  query getCollections {
+    collections(first: 100, sortKey: TITLE) {
+      edges {
+        node {
+          ...collection
+        }
+      }
+    }
+  }
+  ${collectionFragment}
+`;
+
+export const getCollectionProductsQuery = /* GraphQL */ `
+  query getCollectionProducts(
+    $handle: String!
+    $sortKey: ProductCollectionSortKeys
+    $reverse: Boolean
+  ) {
+    collection(handle: $handle) {
+      products(sortKey: $sortKey, reverse: $reverse, first: 100) {
+        edges {
+          node {
+            ...product
+          }
+        }
+      }
+    }
+  }
+  ${productFragment}
+`;
+
+
+# Filename: ./lib/shopify/queries/menu.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/queries/menu.ts
+
+export const getMenuQuery = /* GraphQL */ `
+  query getMenu($handle: String!) {
+    menu(handle: $handle) {
+      items {
+        title
+        url
+      }
+    }
+  }
+`;
+
+
+# Filename: ./lib/shopify/queries/page.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/queries/page.ts
+
+import seoFragment from '../fragments/seo';
+
+const pageFragment = /* GraphQL */ `
+  fragment page on Page {
+    ... on Page {
+      id
+      title
+      handle
+      body
+      bodySummary
+      seo {
+        ...seo
+      }
+      createdAt
+      updatedAt
+    }
+  }
+  ${seoFragment}
+`;
+
+export const getPageQuery = /* GraphQL */ `
+  query getPage($handle: String!) {
+    pageByHandle(handle: $handle) {
+      ...page
+    }
+  }
+  ${pageFragment}
+`;
+
+export const getPagesQuery = /* GraphQL */ `
+  query getPages {
+    pages(first: 100) {
+      edges {
+        node {
+          ...page
+        }
+      }
+    }
+  }
+  ${pageFragment}
+`;
+
+
+# Filename: ./lib/shopify/queries/cart.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/queries/cart.ts
+
+import cartFragment from '../fragments/cart';
+
+export const getCartQuery = /* GraphQL */ `
+  query getCart($cartId: ID!) {
+    cart(id: $cartId) {
+      ...cart
+    }
+  }
+  ${cartFragment}
+`;
+
+
+# Filename: ./lib/shopify/retry.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/retry.ts
+
+import { ShopifyAPIError } from './errors';
+
+export interface RetryOptions {
+  maxRetries: number;
+  backoffFactor: number;
+  initialDelay: number;
+  maxDelay: number;
+}
+
+export const DEFAULT_RETRY_OPTIONS: RetryOptions = {
+  maxRetries: 3,
+  backoffFactor: 2,
+  initialDelay: 1000,
+  maxDelay: 10000
+};
+
+export async function withRetry<T>(
+  operation: () => Promise<T>,
+  options: Partial<RetryOptions> = {}
+): Promise<T> {
+  const retryOptions = { ...DEFAULT_RETRY_OPTIONS, ...options };
+  let lastError: Error | null = null;
+  let delay = retryOptions.initialDelay;
+
+  for (let attempt = 0; attempt <= retryOptions.maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error as Error;
+
+      if (error instanceof ShopifyAPIError) {
+        // Don't retry client errors (4xx)
+        if (error.statusCode && error.statusCode >= 400 && error.statusCode < 500) {
+          throw error;
+        }
+      }
+
+      if (attempt === retryOptions.maxRetries) {
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, delay));
+
+      delay = Math.min(delay * retryOptions.backoffFactor, retryOptions.maxDelay);
+    }
+  }
+
+  throw lastError || new Error('Operation failed after retries');
+}
+
+
+# Filename: ./lib/shopify/types.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/types.ts
+
+export type Maybe<T> = T | null;
+
+export type Connection<T> = {
+  edges: Array<Edge<T>>;
+};
+
+export type Edge<T> = {
+  node: T;
+};
+
+export type Cart = Omit<ShopifyCart, 'lines'> & {
+  lines: CartItem[];
+};
+
+export interface ShopifyFetchParams {
+  cache?: RequestCache;
+  headers?: HeadersInit;
+  query: string;
+  tags?: string[];
+  variables?: any;
+}
+
+export interface ShopifyFetchResponse<T> {
+  status: number;
+  body: T;
+}
+
+export type CartProduct = {
+  id: string;
+  handle: string;
+  title: string;
+  featuredImage: Image;
+};
+
+export type CartItem = {
+  id: string | undefined;
+  quantity: number;
+  cost: {
+    totalAmount: Money;
+  };
+  merchandise: {
+    id: string;
+    title: string;
+    selectedOptions: {
+      name: string;
+      value: string;
+    }[];
+    product: CartProduct;
+  };
+};
+
+export type Collection = ShopifyCollection & {
+  path: string;
+};
+
+export type Image = {
+  url: string;
+  altText: string;
+  width: number;
+  height: number;
+};
+
+export type Menu = {
+  title: string;
+  path: string;
+};
+
+export type Money = {
+  amount: string;
+  currencyCode: string;
+};
+
+export type Page = {
+  id: string;
+  title: string;
+  handle: string;
+  body: string;
+  bodySummary: string;
+  seo?: SEO;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Product = Omit<ShopifyProduct, 'variants' | 'images'> & {
+  variants: ProductVariant[];
+  images: Image[];
+};
+
+export type ProductOption = {
+  id: string;
+  name: string;
+  values: string[];
+};
+
+export type ProductVariant = {
+  id: string;
+  title: string;
+  availableForSale: boolean;
+  selectedOptions: {
+    name: string;
+    value: string;
+  }[];
+  price: Money;
+};
+
+export type SEO = {
+  title: string;
+  description: string;
+};
+
+export type ShopifyCart = {
+  id: string | undefined;
+  checkoutUrl: string;
+  cost: {
+    subtotalAmount: Money;
+    totalAmount: Money;
+    totalTaxAmount: Money;
+  };
+  lines: Connection<CartItem>;
+  totalQuantity: number;
+};
+
+export type ShopifyCollection = {
+  handle: string;
+  title: string;
+  description: string;
+  seo: SEO;
+  updatedAt: string;
+};
+
+export type ShopifyProduct = {
+  id: string;
+  handle: string;
+  availableForSale: boolean;
+  title: string;
+  description: string;
+  descriptionHtml: string;
+  options: ProductOption[];
+  priceRange: {
+    maxVariantPrice: Money;
+    minVariantPrice: Money;
+  };
+  variants: Connection<ProductVariant>;
+  featuredImage: Image;
+  images: Connection<Image>;
+  seo: SEO;
+  tags: string[];
+  updatedAt: string;
+};
+
+export type ShopifyCartOperation = {
+  data: {
+    cart: ShopifyCart;
+  };
+  variables: {
+    cartId: string;
+  };
+};
+
+export type ShopifyCreateCartOperation = {
+  data: { cartCreate: { cart: ShopifyCart } };
+};
+
+export type ShopifyAddToCartOperation = {
+  data: {
+    cartLinesAdd: {
+      cart: ShopifyCart;
+    };
+  };
+  variables: {
+    cartId: string;
+    lines: {
+      merchandiseId: string;
+      quantity: number;
+    }[];
+  };
+};
+
+export type ShopifyRemoveFromCartOperation = {
+  data: {
+    cartLinesRemove: {
+      cart: ShopifyCart;
+    };
+  };
+  variables: {
+    cartId: string;
+    lineIds: string[];
+  };
+};
+
+export type ShopifyUpdateCartOperation = {
+  data: {
+    cartLinesUpdate: {
+      cart: ShopifyCart;
+    };
+  };
+  variables: {
+    cartId: string;
+    lines: {
+      id: string;
+      merchandiseId: string;
+      quantity: number;
+    }[];
+  };
+};
+
+export type ShopifyCollectionOperation = {
+  data: {
+    collection: ShopifyCollection;
+  };
+  variables: {
+    handle: string;
+  };
+};
+
+export type ShopifyCollectionProductsOperation = {
+  data: {
+    collection: {
+      products: Connection<ShopifyProduct>;
+    };
+  };
+  variables: {
+    handle: string;
+    reverse?: boolean;
+    sortKey?: string;
+  };
+};
+
+export type ShopifyCollectionsOperation = {
+  data: {
+    collections: Connection<ShopifyCollection>;
+  };
+};
+
+export type ShopifyMenuOperation = {
+  data: {
+    menu?: {
+      items: {
+        title: string;
+        url: string;
+      }[];
+    };
+  };
+  variables: {
+    handle: string;
+  };
+};
+
+export type ShopifyPageOperation = {
+  data: { pageByHandle: Page };
+  variables: { handle: string };
+};
+
+export type ShopifyPagesOperation = {
+  data: {
+    pages: Connection<Page>;
+  };
+};
+
+export type ShopifyProductOperation = {
+  data: { product: ShopifyProduct };
+  variables: {
+    handle: string;
+  };
+};
+
+export type ShopifyProductRecommendationsOperation = {
+  data: {
+    productRecommendations: ShopifyProduct[];
+  };
+  variables: {
+    productId: string;
+  };
+};
+
+export type ShopifyProductsOperation = {
+  data: {
+    products: Connection<ShopifyProduct>;
+  };
+  variables: {
+    query?: string;
+    reverse?: boolean;
+    sortKey?: string;
+  };
+};
+
+
+# Filename: ./lib/shopify/rate-limiter.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/rate-limiter.ts
+
+// File: /lib/shopify/rate-limiter.ts
+
+export const RATE_LIMIT_REQUESTS = 50; // Adjust based on your Shopify plan
+export const RATE_LIMIT_WINDOW = 60000; // 1 minute in milliseconds
+
+export class RateLimiter {
+  private requests: number[] = [];
+
+  canMakeRequest(): boolean {
+    const now = Date.now();
+    this.requests = this.requests.filter((time) => now - time < RATE_LIMIT_WINDOW);
+    return this.requests.length < RATE_LIMIT_REQUESTS;
+  }
+
+  addRequest(): void {
+    this.requests.push(Date.now());
+  }
+}
+
+export const globalRateLimiter = new RateLimiter();
+
+
+# Filename: ./lib/shopify/index.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/index.ts
+
+import { HIDDEN_PRODUCT_TAG, SHOPIFY_GRAPHQL_API_ENDPOINT, TAGS } from 'lib/constants';
+import { ensureStartsWith } from 'lib/utils';
+import { revalidateTag } from 'next/cache';
+import { headers } from 'next/headers';
+import { NextRequest, NextResponse } from 'next/server';
+import {
+  addToCartMutation,
+  createCartMutation,
+  editCartItemsMutation,
+  removeFromCartMutation
+} from './mutations/cart';
+import { getCartQuery } from './queries/cart';
+import {
+  getCollectionProductsQuery,
+  getCollectionQuery,
+  getCollectionsQuery
+} from './queries/collection';
+import { getMenuQuery } from './queries/menu';
+import { getPageQuery, getPagesQuery } from './queries/page';
+import {
+  getProductQuery,
+  getProductRecommendationsQuery,
+  getProductsQuery
+} from './queries/product';
+import {
+  Cart,
+  Collection,
+  Connection,
+  Image,
+  Menu,
+  Page,
+  Product,
+  ShopifyAddToCartOperation,
+  ShopifyCart,
+  ShopifyCartOperation,
+  ShopifyCollection,
+  ShopifyCollectionOperation,
+  ShopifyCollectionProductsOperation,
+  ShopifyCollectionsOperation,
+  ShopifyCreateCartOperation,
+  ShopifyMenuOperation,
+  ShopifyPageOperation,
+  ShopifyPagesOperation,
+  ShopifyProduct,
+  ShopifyProductOperation,
+  ShopifyProductRecommendationsOperation,
+  ShopifyProductsOperation,
+  ShopifyRemoveFromCartOperation,
+  ShopifyUpdateCartOperation
+} from './types';
+
+import { ShopifyAPIError } from './errors';
+import { globalRateLimiter } from './rate-limiter';
+import { DEFAULT_RETRY_OPTIONS, withRetry } from './retry';
+
+const domain = process.env.SHOPIFY_STORE_DOMAIN
+  ? ensureStartsWith(process.env.SHOPIFY_STORE_DOMAIN, 'https://')
+  : '';
+const endpoint = `${domain}${SHOPIFY_GRAPHQL_API_ENDPOINT}`;
+const key = process.env.SHOPIFY_STOREFRONT_ACCESS_TOKEN!;
+
+type ExtractVariables<T> = T extends { variables: object } ? T['variables'] : never;
+
+export async function shopifyFetch<T>({
+  cache = 'force-cache',
+  headers,
+  query,
+  tags,
+  variables
+}: {
+  cache?: RequestCache;
+  headers?: HeadersInit;
+  query: string;
+  tags?: string[];
+  variables?: ExtractVariables<T>;
+}): Promise<{ status: number; body: T }> {
+  if (!globalRateLimiter.canMakeRequest()) {
+    throw new ShopifyAPIError('Rate limit exceeded', 'RATE_LIMIT_EXCEEDED', 429, 'Rate Limiter');
+  }
+
+  globalRateLimiter.addRequest();
+
+  try {
+    const result = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Shopify-Storefront-Access-Token': key,
+        ...headers
+      },
+      body: JSON.stringify({
+        ...(query && { query }),
+        ...(variables && { variables })
+      }),
+      cache,
+      ...(tags && { next: { tags } })
+    });
+
+    const body = await result.json();
+
+    if (body.errors) {
+      const firstError = body.errors[0];
+      throw new ShopifyAPIError(
+        firstError.message,
+        firstError.code || 'UNKNOWN_ERROR',
+        result.status,
+        'Shopify API'
+      );
+    }
+
+    if (!result.ok) {
+      throw new ShopifyAPIError(
+        `HTTP Error: ${result.statusText}`,
+        'HTTP_ERROR',
+        result.status,
+        'Shopify API'
+      );
+    }
+
+    return {
+      status: result.status,
+      body
+    };
+  } catch (e) {
+    if (e instanceof ShopifyAPIError) {
+      throw e;
+    }
+
+    if (e instanceof Error) {
+      throw new ShopifyAPIError(e.message, 'NETWORK_ERROR', 500, 'Shopify API');
+    }
+
+    throw new ShopifyAPIError('An unknown error occurred', 'UNKNOWN_ERROR', 500, 'Shopify API');
+  }
+}
+
+const removeEdgesAndNodes = <T>(array: Connection<T>): T[] => {
+  return array.edges.map((edge) => edge?.node);
+};
+
+const reshapeCart = (cart: ShopifyCart): Cart => {
+  if (!cart.cost?.totalTaxAmount) {
+    cart.cost.totalTaxAmount = {
+      amount: '0.0',
+      currencyCode: cart.cost.totalAmount.currencyCode
+    };
+  }
+
+  return {
+    ...cart,
+    lines: removeEdgesAndNodes(cart.lines)
+  };
+};
+
+const reshapeCollection = (collection: ShopifyCollection): Collection | undefined => {
+  if (!collection) {
+    return undefined;
+  }
+
+  return {
+    ...collection,
+    path: `/search/${collection.handle}`
+  };
+};
+
+const reshapeCollections = (collections: ShopifyCollection[]) => {
+  const reshapedCollections = [];
+
+  for (const collection of collections) {
+    if (collection) {
+      const reshapedCollection = reshapeCollection(collection);
+
+      if (reshapedCollection) {
+        reshapedCollections.push(reshapedCollection);
+      }
+    }
+  }
+
+  return reshapedCollections;
+};
+
+const reshapeImages = (images: Connection<Image>, productTitle: string) => {
+  const flattened = removeEdgesAndNodes(images);
+
+  return flattened.map((image) => {
+    const filename = image.url.match(/.*\/(.*)\..*/)?.[1];
+    return {
+      ...image,
+      altText: image.altText || `${productTitle} - ${filename}`
+    };
+  });
+};
+
+const reshapeProduct = (product: ShopifyProduct, filterHiddenProducts: boolean = true) => {
+  if (!product || (filterHiddenProducts && product.tags.includes(HIDDEN_PRODUCT_TAG))) {
+    return undefined;
+  }
+
+  const { images, variants, ...rest } = product;
+
+  return {
+    ...rest,
+    images: reshapeImages(images, product.title),
+    variants: removeEdgesAndNodes(variants)
+  };
+};
+
+const reshapeProducts = (products: ShopifyProduct[]) => {
+  const reshapedProducts = [];
+
+  for (const product of products) {
+    if (product) {
+      const reshapedProduct = reshapeProduct(product);
+
+      if (reshapedProduct) {
+        reshapedProducts.push(reshapedProduct);
+      }
+    }
+  }
+
+  return reshapedProducts;
+};
+
+export async function createCart(): Promise<Cart> {
+  return withRetry(async () => {
+    const res = await shopifyFetch<ShopifyCreateCartOperation>({
+      query: createCartMutation,
+      cache: 'no-store'
+    });
+
+    if (!res.body.data?.cartCreate?.cart) {
+      throw new ShopifyAPIError('Failed to create cart', 'CART_ERROR', 400, 'Cart Operation');
+    }
+
+    return reshapeCart(res.body.data.cartCreate.cart);
+  }, DEFAULT_RETRY_OPTIONS);
+}
+
+export async function addToCart(
+  cartId: string,
+  lines: { merchandiseId: string; quantity: number }[]
+): Promise<Cart> {
+  return withRetry(async () => {
+    const res = await shopifyFetch<ShopifyAddToCartOperation>({
+      query: addToCartMutation,
+      variables: {
+        cartId,
+        lines
+      },
+      cache: 'no-store'
+    });
+
+    if (!res.body.data?.cartLinesAdd?.cart) {
+      throw new ShopifyAPIError('Failed to add items to cart', 'CART_ERROR', 400, 'Cart Operation');
+    }
+
+    return reshapeCart(res.body.data.cartLinesAdd.cart);
+  }, DEFAULT_RETRY_OPTIONS);
+}
+
+export async function removeFromCart(cartId: string, lineIds: string[]): Promise<Cart> {
+  return withRetry(async () => {
+    const res = await shopifyFetch<ShopifyRemoveFromCartOperation>({
+      query: removeFromCartMutation,
+      variables: {
+        cartId,
+        lineIds
+      },
+      cache: 'no-store'
+    });
+
+    if (!res.body.data?.cartLinesRemove?.cart) {
+      throw new ShopifyAPIError(
+        'Failed to remove items from cart',
+        'CART_ERROR',
+        400,
+        'Cart Operation'
+      );
+    }
+
+    return reshapeCart(res.body.data.cartLinesRemove.cart);
+  }, DEFAULT_RETRY_OPTIONS);
+}
+
+export async function updateCart(
+  cartId: string,
+  lines: { id: string; merchandiseId: string; quantity: number }[]
+): Promise<Cart> {
+  return withRetry(async () => {
+    const res = await shopifyFetch<ShopifyUpdateCartOperation>({
+      query: editCartItemsMutation,
+      variables: {
+        cartId,
+        lines
+      },
+      cache: 'no-store'
+    });
+
+    if (!res.body.data?.cartLinesUpdate?.cart) {
+      throw new ShopifyAPIError('Failed to update cart', 'CART_ERROR', 400, 'Cart Operation');
+    }
+
+    return reshapeCart(res.body.data.cartLinesUpdate.cart);
+  }, DEFAULT_RETRY_OPTIONS);
+}
+
+export async function getCart(cartId: string | undefined): Promise<Cart | undefined> {
+  if (!cartId) {
+    return undefined;
+  }
+
+  return withRetry(async () => {
+    const res = await shopifyFetch<ShopifyCartOperation>({
+      query: getCartQuery,
+      variables: { cartId },
+      tags: [TAGS.cart]
+    });
+
+    // Old carts become `null` when you checkout.
+    if (!res.body.data?.cart) {
+      return undefined;
+    }
+
+    return reshapeCart(res.body.data.cart);
+  }, DEFAULT_RETRY_OPTIONS);
+}
+
+export async function getCollection(handle: string): Promise<Collection | undefined> {
+  return withRetry(async () => {
+    const res = await shopifyFetch<ShopifyCollectionOperation>({
+      query: getCollectionQuery,
+      tags: [TAGS.collections],
+      variables: {
+        handle
+      }
+    });
+
+    return reshapeCollection(res.body.data.collection);
+  }, DEFAULT_RETRY_OPTIONS);
+}
+
+export async function getCollectionProducts({
+  collection,
+  reverse,
+  sortKey
+}: {
+  collection: string;
+  reverse?: boolean;
+  sortKey?: string;
+}): Promise<Product[]> {
+  return withRetry(async () => {
+    const res = await shopifyFetch<ShopifyCollectionProductsOperation>({
+      query: getCollectionProductsQuery,
+      tags: [TAGS.collections, TAGS.products],
+      variables: {
+        handle: collection,
+        reverse,
+        sortKey: sortKey === 'CREATED_AT' ? 'CREATED' : sortKey
+      }
+    });
+
+    if (!res.body.data?.collection) {
+      console.log(`No collection found for \`${collection}\``);
+      return [];
+    }
+
+    return reshapeProducts(removeEdgesAndNodes(res.body.data.collection.products));
+  }, DEFAULT_RETRY_OPTIONS);
+}
+
+export async function getCollections(): Promise<Collection[]> {
+  return withRetry(async () => {
+    const res = await shopifyFetch<ShopifyCollectionsOperation>({
+      query: getCollectionsQuery,
+      tags: [TAGS.collections]
+    });
+
+    const shopifyCollections = removeEdgesAndNodes(res.body?.data?.collections);
+    const collections = [
+      {
+        handle: '',
+        title: 'All',
+        description: 'All products',
+        seo: {
+          title: 'All',
+          description: 'All products'
+        },
+        path: '/search',
+        updatedAt: new Date().toISOString()
+      },
+      ...reshapeCollections(shopifyCollections).filter(
+        (collection) => !collection.handle.startsWith('hidden')
+      )
+    ];
+
+    return collections;
+  }, DEFAULT_RETRY_OPTIONS);
+}
+
+export async function getMenu(handle: string): Promise<Menu[]> {
+  return withRetry(async () => {
+    const res = await shopifyFetch<ShopifyMenuOperation>({
+      query: getMenuQuery,
+      tags: [TAGS.collections],
+      variables: {
+        handle
+      }
+    });
+
+    return (
+      res.body?.data?.menu?.items.map((item: { title: string; url: string }) => ({
+        title: item.title,
+        path: item.url.replace(domain, '').replace('/collections', '/search').replace('/pages', '')
+      })) || []
+    );
+  }, DEFAULT_RETRY_OPTIONS);
+}
+
+export async function getPage(handle: string): Promise<Page> {
+  return withRetry(async () => {
+    const res = await shopifyFetch<ShopifyPageOperation>({
+      query: getPageQuery,
+      cache: 'no-store',
+      variables: { handle }
+    });
+
+    if (!res.body.data?.pageByHandle) {
+      throw new ShopifyAPIError('Page not found', 'NOT_FOUND', 404, 'Page Operation');
+    }
+
+    return res.body.data.pageByHandle;
+  }, DEFAULT_RETRY_OPTIONS);
+}
+
+export async function getPages(): Promise<Page[]> {
+  return withRetry(async () => {
+    const res = await shopifyFetch<ShopifyPagesOperation>({
+      query: getPagesQuery,
+      cache: 'no-store'
+    });
+
+    return removeEdgesAndNodes(res.body.data.pages);
+  }, DEFAULT_RETRY_OPTIONS);
+}
+
+export async function getProduct(handle: string): Promise<Product | undefined> {
+  return withRetry(async () => {
+    const res = await shopifyFetch<ShopifyProductOperation>({
+      query: getProductQuery,
+      tags: [TAGS.products],
+      variables: {
+        handle
+      }
+    });
+
+    return reshapeProduct(res.body.data.product, false);
+  }, DEFAULT_RETRY_OPTIONS);
+}
+
+export async function getProductRecommendations(productId: string): Promise<Product[]> {
+  return withRetry(async () => {
+    const res = await shopifyFetch<ShopifyProductRecommendationsOperation>({
+      query: getProductRecommendationsQuery,
+      tags: [TAGS.products],
+      variables: {
+        productId
+      }
+    });
+
+    return reshapeProducts(res.body.data.productRecommendations);
+  }, DEFAULT_RETRY_OPTIONS);
+}
+
+export async function getProducts({
+  query,
+  reverse,
+  sortKey
+}: {
+  query?: string;
+  reverse?: boolean;
+  sortKey?: string;
+}): Promise<Product[]> {
+  return withRetry(async () => {
+    const res = await shopifyFetch<ShopifyProductsOperation>({
+      query: getProductsQuery,
+      tags: [TAGS.products],
+      variables: {
+        query,
+        reverse,
+        sortKey
+      }
+    });
+
+    if (!res.body.data?.products) {
+      throw new ShopifyAPIError(
+        'Failed to fetch products',
+        'PRODUCTS_ERROR',
+        400,
+        'Products Operation'
+      );
+    }
+
+    return reshapeProducts(removeEdgesAndNodes(res.body.data.products));
+  }, DEFAULT_RETRY_OPTIONS);
+}
+
+// This is called from `app/api/revalidate.ts` so providers can control revalidation logic.
+export async function revalidate(req: NextRequest): Promise<NextResponse> {
+  try {
+    // We always need to respond with a 200 status code to Shopify,
+    // otherwise it will continue to retry the request.
+    const collectionWebhooks = ['collections/create', 'collections/delete', 'collections/update'];
+    const productWebhooks = ['products/create', 'products/delete', 'products/update'];
+    const topic = (await headers()).get('x-shopify-topic') || 'unknown';
+    const secret = req.nextUrl.searchParams.get('secret');
+    const isCollectionUpdate = collectionWebhooks.includes(topic);
+    const isProductUpdate = productWebhooks.includes(topic);
+
+    if (!secret || secret !== process.env.SHOPIFY_REVALIDATION_SECRET) {
+      throw new ShopifyAPIError(
+        'Invalid revalidation secret',
+        'INVALID_SECRET',
+        401,
+        'Revalidation'
+      );
+    }
+
+    if (!isCollectionUpdate && !isProductUpdate) {
+      // We don't need to revalidate anything for any other topics.
+      return NextResponse.json({ status: 200 });
+    }
+
+    if (isCollectionUpdate) {
+      await revalidateTag(TAGS.collections);
+    }
+
+    if (isProductUpdate) {
+      await revalidateTag(TAGS.products);
+    }
+
+    return NextResponse.json({
+      status: 200,
+      revalidated: true,
+      now: Date.now(),
+      topic,
+      updatedCollections: isCollectionUpdate,
+      updatedProducts: isProductUpdate
+    });
+  } catch (e) {
+    if (e instanceof ShopifyAPIError) {
+      console.error(`Revalidation Error: ${e.message}`, {
+        code: e.code,
+        statusCode: e.statusCode,
+        source: e.source
+      });
+
+      return NextResponse.json({
+        status: e.statusCode || 500,
+        error: e.message
+      });
+    }
+
+    console.error('Revalidation failed:', e);
+    return NextResponse.json({
+      status: 500,
+      error: 'Internal Server Error'
+    });
+  }
+}
+
+// Helper function to safely handle API responses
+export async function handleShopifyResponse<T>(
+  operation: () => Promise<T>,
+  errorContext: string
+): Promise<T> {
+  try {
+    return await withRetry(operation, {
+      ...DEFAULT_RETRY_OPTIONS,
+      maxRetries: 3,
+      backoffFactor: 2
+    });
+  } catch (e) {
+    if (e instanceof ShopifyAPIError) {
+      throw e;
+    }
+
+    throw new ShopifyAPIError(
+      `Failed to execute ${errorContext}`,
+      'OPERATION_ERROR',
+      500,
+      errorContext
+    );
+  }
+}
+
+// Utility function to validate Shopify webhook signatures
+export function validateShopifyWebhook(body: string, headerHmac: string | null): boolean {
+  if (!process.env.SHOPIFY_WEBHOOK_SECRET || !headerHmac) {
+    return false;
+  }
+
+  try {
+    const crypto = require('crypto');
+    const hmac = crypto
+      .createHmac('sha256', process.env.SHOPIFY_WEBHOOK_SECRET)
+      .update(body, 'utf8')
+      .digest('base64');
+
+    return hmac === headerHmac;
+  } catch (e) {
+    console.error('Webhook validation failed:', e);
+    return false;
+  }
+}
+
+// Export additional utility types and constants
+export type { RetryOptions } from './retry';
+
+export type { ShopifyAPIError, ShopifyError, ShopifyErrorResponse } from './errors';
+
+export { DEFAULT_RETRY_OPTIONS, withRetry } from './retry';
+
+export { globalRateLimiter } from './rate-limiter';
+
+// Export webhook types for better type safety
+export const WebhookTopics = {
+  COLLECTIONS_CREATE: 'collections/create',
+  COLLECTIONS_DELETE: 'collections/delete',
+  COLLECTIONS_UPDATE: 'collections/update',
+  PRODUCTS_CREATE: 'products/create',
+  PRODUCTS_DELETE: 'products/delete',
+  PRODUCTS_UPDATE: 'products/update'
+} as const;
+
+export type WebhookTopic = (typeof WebhookTopics)[keyof typeof WebhookTopics];
+
+
+# Filename: ./lib/utils.ts
+# Path: /Users/admin/gp/commerce/./lib/utils.ts
+
+import { type ClassValue, clsx } from 'clsx';
+import { ReadonlyURLSearchParams } from 'next/navigation';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+export const createUrl = (pathname: string, params: URLSearchParams | ReadonlyURLSearchParams) => {
+  const paramsString = params.toString();
+  const queryString = `${paramsString.length ? '?' : ''}${paramsString}`;
+
+  return `${pathname}${queryString}`;
+};
+
+export const ensureStartsWith = (stringToCheck: string, startsWith: string) =>
+  stringToCheck.startsWith(startsWith) ? stringToCheck : `${startsWith}${stringToCheck}`;
+
+export const validateEnvironmentVariables = () => {
+  const requiredEnvironmentVariables = ['SHOPIFY_STORE_DOMAIN', 'SHOPIFY_STOREFRONT_ACCESS_TOKEN'];
+  const missingEnvironmentVariables = [] as string[];
+
+  requiredEnvironmentVariables.forEach((envVar) => {
+    if (!process.env[envVar]) {
+      missingEnvironmentVariables.push(envVar);
+    }
+  });
+
+  if (missingEnvironmentVariables.length) {
+    throw new Error(
+      `The following environment variables are missing. Your site will not work without them. Read more: https://vercel.com/docs/integrations/shopify#configure-environment-variables\n\n${missingEnvironmentVariables.join(
+        '\n'
+      )}\n`
+    );
+  }
+
+  if (
+    process.env.SHOPIFY_STORE_DOMAIN?.includes('[') ||
+    process.env.SHOPIFY_STORE_DOMAIN?.includes(']')
+  ) {
+    throw new Error(
+      'Your `SHOPIFY_STORE_DOMAIN` environment variable includes brackets (ie. `[` and / or `]`). Your site will not work with them there. Please remove them.'
+    );
+  }
+};
+
+
+# Filename: ./lib/constants.ts
+# Path: /Users/admin/gp/commerce/./lib/constants.ts
+
+export type SortFilterItem = {
+  title: string;
+  slug: string | null;
+  sortKey: 'RELEVANCE' | 'BEST_SELLING' | 'CREATED_AT' | 'PRICE';
+  reverse: boolean;
+};
+
+export const defaultSort: SortFilterItem = {
+  title: 'Relevance',
+  slug: null,
+  sortKey: 'RELEVANCE',
+  reverse: false
+};
+
+export const sorting: SortFilterItem[] = [
+  defaultSort,
+  { title: 'Trending', slug: 'trending-desc', sortKey: 'BEST_SELLING', reverse: false }, // asc
+  { title: 'Latest arrivals', slug: 'latest-desc', sortKey: 'CREATED_AT', reverse: true },
+  { title: 'Price: Low to high', slug: 'price-asc', sortKey: 'PRICE', reverse: false }, // asc
+  { title: 'Price: High to low', slug: 'price-desc', sortKey: 'PRICE', reverse: true }
+];
+
+export const TAGS = {
+  collections: 'collections',
+  products: 'products',
+  cart: 'cart'
+};
+
+export const HIDDEN_PRODUCT_TAG = 'nextjs-frontend-hidden';
+export const DEFAULT_OPTION = 'Default Title';
+export const SHOPIFY_GRAPHQL_API_ENDPOINT = '/api/2023-01/graphql.json';
+
+
+# Filename: ./next.config.ts
+# Path: /Users/admin/gp/commerce/./next.config.ts
+
+export default {
+  images: {
+    formats: ['image/avif', 'image/webp'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'cdn.shopify.com',
+        pathname: '/s/files/**'
+      }
+    ]
+  }
+};

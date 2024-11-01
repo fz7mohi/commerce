@@ -12,6 +12,19 @@ export type Cart = Omit<ShopifyCart, 'lines'> & {
   lines: CartItem[];
 };
 
+export interface ShopifyFetchParams {
+  cache?: RequestCache;
+  headers?: HeadersInit;
+  query: string;
+  tags?: string[];
+  variables?: any;
+}
+
+export interface ShopifyFetchResponse<T> {
+  status: number;
+  body: T;
+}
+
 export type CartProduct = {
   id: string;
   handle: string;
