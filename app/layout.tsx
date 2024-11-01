@@ -1,4 +1,5 @@
 import { CartProvider } from 'components/cart/cart-context';
+import { BottomNav } from 'components/layout/bottom-nav'; // Add this import
 import { Navbar } from 'components/layout/navbar';
 import { Providers } from 'components/providers/providers';
 import { WelcomeToast } from 'components/welcome-toast';
@@ -43,10 +44,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 
   return (
     <html lang="en" className={GeistSans.variable}>
-      <body className="bg-primary-gray text-primary-dark selection:bg-primary selection:text-primary-white dark:bg-primary-dark dark:text-primary-gray dark:selection:bg-primary-light dark:selection:text-primary-dark transition-colors duration-300">
+      <body className="bg-primary-gray text-primary-dark transition-colors duration-300 selection:bg-primary selection:text-primary-white dark:bg-primary-dark dark:text-primary-gray dark:selection:bg-primary-light dark:selection:text-primary-dark">
         <CartProvider cartPromise={cart}>
           <Navbar />
-          <main>
+          <main className="pb-16 md:pb-0">
+            {' '}
+            {/* Add padding bottom for mobile */}
             <Providers
               attribute="class"
               defaultTheme="system"
@@ -68,6 +71,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             />
             <WelcomeToast />
           </main>
+          <BottomNav /> {/* Add the BottomNav component */}
         </CartProvider>
       </body>
     </html>

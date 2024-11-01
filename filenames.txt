@@ -81,6 +81,8 @@
 ./lib/shopify/fragments/seo.ts
 ./lib/shopify/fragments/cart.ts
 ./lib/shopify/cache/redis.ts
+./lib/shopify/cache/memory.ts
+./lib/shopify/cache/index.ts
 ./lib/shopify/errors.ts
 ./lib/shopify/mutations/cart.ts
 ./lib/shopify/queries/product.ts
@@ -91,6 +93,7 @@
 ./lib/shopify/retry.ts
 ./lib/shopify/types.ts
 ./lib/shopify/rate-limiter.ts
+./lib/shopify/rate-limiter/types.ts
 ./lib/shopify/rate-limiter/config.ts
 ./lib/shopify/rate-limiter/advanced-limiter.ts
 ./lib/shopify/index.ts

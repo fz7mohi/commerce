@@ -121,7 +121,6 @@ import { Gallery } from 'components/product/gallery';
 import { ProductProvider } from 'components/product/product-context';
 import { ProductDescription } from 'components/product/product-description';
 import { HIDDEN_PRODUCT_TAG } from 'lib/constants';
-import { getProduct, getProductRecommendations } from 'lib/shopify';
 import { shopifyClient } from 'lib/shopify/optimized-fetching';
 import { Image } from 'lib/shopify/types';
 import type { Metadata } from 'next';
@@ -134,147 +133,157 @@ export async function generateMetadata({
 }: {
   params: Promise<{ handle: string }>;
 }): Promise<Metadata> {
-  // Await the params
-  const { handle } = await params;
-  const product = await getProduct(handle);
+  try {
+    const { handle } = await params;
+    const { product } = await shopifyClient.getProductPageData(handle, {
+      cache: true,
+      ttl: 3600,
+      priority: 'high'
+    });
 
-  if (!product) return notFound();
+    if (!product) return notFound();
 
-  const { url, width, height, altText: alt } = product.featuredImage || {};
-  const indexable = !product.tags.includes(HIDDEN_PRODUCT_TAG);
+    const { url, width, height, altText: alt } = product.featuredImage || {};
+    const indexable = !product.tags.includes(HIDDEN_PRODUCT_TAG);
 
-  return {
-    title: product.seo.title || product.title,
-    description: product.seo.description || product.description,
-    robots: {
-      index: indexable,
-      follow: indexable,
-      googleBot: {
+    return {
+      title: product.seo.title || product.title,
+      description: product.seo.description || product.description,
+      robots: {
         index: indexable,
-        follow: indexable
-      }
-    },
-    openGraph: url
-      ? {
-          images: [
-            {
-              url,
-              width,
-              height,
-              alt
-            }
-          ]
+        follow: indexable,
+        googleBot: {
+          index: indexable,
+          follow: indexable
         }
-      : null
-  };
+      },
+      openGraph: url
+        ? {
+            images: [
+              {
+                url,
+                width,
+                height,
+                alt
+              }
+            ]
+          }
+        : null
+    };
+  } catch (error) {
+    console.error('Error generating metadata:', error);
+    return {
+      title: 'Product',
+      description: 'Product details'
+    };
+  }
 }
 
 export default async function ProductPage({ params }: { params: Promise<{ handle: string }> }) {
-  // Await the params
-  const { handle } = await params;
+  try {
+    const { handle } = await params;
+    const { product, recommendations, collections } = await shopifyClient.getProductPageData(
+      handle,
+      {
+        cache: true,
+        ttl: 3600,
+        priority: 'high'
+      }
+    );
 
-  const { product, recommendations, collections } = await shopifyClient.getProductPageData(handle, {
-    cache: true,
-    ttl: 3600,
-    priority: 'high'
-  });
-
-  if (!product) {
-    notFound();
-  }
-
-  const productJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Product',
-    name: product.title,
-    description: product.description,
-    image: product.featuredImage.url,
-    offers: {
-      '@type': 'AggregateOffer',
-      availability: product.availableForSale
-        ? 'https://schema.org/InStock'
-        : 'https://schema.org/OutOfStock',
-      priceCurrency: product.priceRange.minVariantPrice.currencyCode,
-      highPrice: product.priceRange.maxVariantPrice.amount,
-      lowPrice: product.priceRange.minVariantPrice.amount
+    if (!product) {
+      notFound();
     }
-  };
 
-  return (
-    <ProductProvider>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify(productJsonLd)
-        }}
-      />
-      <div className="mx-auto max-w-screen-2xl px-4">
-        <div className="flex flex-col rounded-lg border border-neutral-200 bg-white p-8 dark:border-neutral-800 dark:bg-black md:p-12 lg:flex-row lg:gap-8">
-          <div className="h-full w-full basis-full lg:basis-4/6">
-            <Suspense
-              fallback={
-                <div className="relative aspect-square h-full max-h-[550px] w-full overflow-hidden" />
-              }
-            >
-              <Gallery
-                images={product.images.slice(0, 5).map((image: Image) => ({
-                  src: image.url,
-                  altText: image.altText
-                }))}
-              />
-            </Suspense>
+    const productJsonLd = {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: product.title,
+      description: product.description,
+      image: product.featuredImage.url,
+      offers: {
+        '@type': 'AggregateOffer',
+        availability: product.availableForSale
+          ? 'https://schema.org/InStock'
+          : 'https://schema.org/OutOfStock',
+        priceCurrency: product.priceRange.minVariantPrice.currencyCode,
+        highPrice: product.priceRange.maxVariantPrice.amount,
+        lowPrice: product.priceRange.minVariantPrice.amount
+      }
+    };
+
+    return (
+      <ProductProvider>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(productJsonLd)
+          }}
+        />
+        <div className="mx-auto max-w-screen-2xl px-4">
+          <div className="flex flex-col rounded-lg border border-neutral-200 bg-white p-8 dark:border-neutral-800 dark:bg-black md:p-12 lg:flex-row lg:gap-8">
+            <div className="h-full w-full basis-full lg:basis-4/6">
+              <Suspense
+                fallback={
+                  <div className="relative aspect-square h-full max-h-[550px] w-full overflow-hidden" />
+                }
+              >
+                <Gallery
+                  images={product.images.slice(0, 5).map((image: Image) => ({
+                    src: image.url,
+                    altText: image.altText
+                  }))}
+                />
+              </Suspense>
+            </div>
+
+            <div className="basis-full lg:basis-2/6">
+              <Suspense fallback={null}>
+                <ProductDescription product={product} />
+              </Suspense>
+            </div>
           </div>
-
-          <div className="basis-full lg:basis-2/6">
-            <Suspense fallback={null}>
-              <ProductDescription product={product} />
-            </Suspense>
+          <div className="py-8">
+            {recommendations.length > 0 && (
+              <>
+                <h2 className="mb-4 text-2xl font-bold">Related Products</h2>
+                <ul className="flex w-full gap-4 overflow-x-auto pt-1">
+                  {recommendations.map((product) => (
+                    <li
+                      key={product.handle}
+                      className="aspect-square w-full flex-none min-[475px]:w-1/2 sm:w-1/3 md:w-1/4 lg:w-1/5"
+                    >
+                      <Link
+                        className="relative h-full w-full"
+                        href={`/product/${product.handle}`}
+                        prefetch={true}
+                      >
+                        <GridTileImage
+                          alt={product.title}
+                          label={{
+                            title: product.title,
+                            amount: product.priceRange.maxVariantPrice.amount,
+                            currencyCode: product.priceRange.maxVariantPrice.currencyCode
+                          }}
+                          src={product.featuredImage?.url}
+                          fill
+                          sizes="(min-width: 1024px) 20vw, (min-width: 768px) 25vw, (min-width: 640px) 33vw, (min-width: 475px) 50vw, 100vw"
+                        />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
           </div>
         </div>
-        <RelatedProducts id={product.id} />
-      </div>
-      <Footer />
-    </ProductProvider>
-  );
-}
-
-// RelatedProducts component is defined as before
-async function RelatedProducts({ id }: { id: string }) {
-  const relatedProducts = await getProductRecommendations(id);
-
-  if (!relatedProducts.length) return null;
-
-  return (
-    <div className="py-8">
-      <h2 className="mb-4 text-2xl font-bold">Related Products</h2>
-      <ul className="flex w-full gap-4 overflow-x-auto pt-1">
-        {relatedProducts.map((product) => (
-          <li
-            key={product.handle}
-            className="aspect-square w-full flex-none min-[475px]:w-1/2 sm:w-1/3 md:w-1/4 lg:w-1/5"
-          >
-            <Link
-              className="relative h-full w-full"
-              href={`/product/${product.handle}`}
-              prefetch={true}
-            >
-              <GridTileImage
-                alt={product.title}
-                label={{
-                  title: product.title,
-                  amount: product.priceRange.maxVariantPrice.amount,
-                  currencyCode: product.priceRange.maxVariantPrice.currencyCode
-                }}
-                src={product.featuredImage?.url}
-                fill
-                sizes="(min-width: 1024px) 20vw, (min-width: 768px) 25vw, (min-width: 640px) 33vw, (min-width: 475px) 50vw, 100vw"
-              />
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
+        <Footer />
+      </ProductProvider>
+    );
+  } catch (error) {
+    console.error('Error rendering product page:', error);
+    notFound();
+  }
 }
 
 
@@ -4315,10 +4324,12 @@ function findError<T extends object>(error: T): boolean {
 
 // File: /lib/shopify/optimized-fetching/types.ts
 
+export type RequestPriority = 'high' | 'medium' | 'low';
+
 export interface FetchOptions {
   cache?: boolean;
   ttl?: number;
-  priority?: 'high' | 'medium' | 'low';
+  priority?: RequestPriority;
   retries?: number;
 }
 
@@ -4328,61 +4339,68 @@ export interface BatchedRequest {
   options: FetchOptions;
 }
 
+export const PRIORITY_VALUES: Record<RequestPriority, number> = {
+  high: 3,
+  medium: 2,
+  low: 1
+};
+
 
 # Filename: ./lib/shopify/optimized-fetching/batch-manager.ts
 # Path: /Users/admin/gp/commerce/./lib/shopify/optimized-fetching/batch-manager.ts
 
 // File: /lib/shopify/optimized-fetching/batch-manager.ts
 
-import { cacheManager } from '../cache/redis';
+import { memoryCache } from '../cache';
 import { AdvancedRateLimiter } from '../rate-limiter/advanced-limiter';
-import { BatchedRequest, FetchOptions } from './types';
+import { BatchedRequest, FetchOptions, PRIORITY_VALUES, RequestPriority } from './types';
 
 export class BatchManager {
-  private batchWindow: number = 50; // ms
+  private batchWindow: number = 50;
   private currentBatch: BatchedRequest[] = [];
   private batchPromise: Promise<any> | null = null;
   private rateLimiter: AdvancedRateLimiter;
 
   constructor() {
-    this.rateLimiter = new AdvancedRateLimiter('default');
+    this.rateLimiter = new AdvancedRateLimiter();
+  }
+
+  private getPriorityValue(priority: RequestPriority | undefined): number {
+    return priority ? PRIORITY_VALUES[priority] : PRIORITY_VALUES.medium;
   }
 
   private async executeBatch(requests: BatchedRequest[]): Promise<Map<string, any>> {
     const results = new Map();
 
-    // Sort by priority
     const sortedRequests = requests.sort((a, b) => {
-      const priorities = { high: 0, medium: 1, low: 2 };
-      return (
-        priorities[a.options.priority || 'medium'] - priorities[b.options.priority || 'medium']
-      );
+      const priorityA = this.getPriorityValue(a.options.priority);
+      const priorityB = this.getPriorityValue(b.options.priority);
+      return priorityB - priorityA;
     });
 
     for (const request of sortedRequests) {
       try {
-        await this.rateLimiter.acquireToken();
+        const priority = this.getPriorityValue(request.options.priority);
+        await this.rateLimiter.acquireToken(priority);
 
-        // Check cache first if enabled
         if (request.options.cache) {
-          const cached = await cacheManager.get(request.key);
+          const cached = await memoryCache.get(request.key);
           if (cached) {
             results.set(request.key, cached);
             continue;
           }
         }
 
-        // Execute request with retries
         const result = await this.executeWithRetries(request);
 
-        // Cache result if enabled
         if (request.options.cache) {
-          await cacheManager.set(request.key, result, request.options.ttl);
+          await memoryCache.set(request.key, result, request.options.ttl);
         }
 
         results.set(request.key, result);
       } catch (error) {
-        results.set(request.key, { error: error.message });
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        results.set(request.key, { error: errorMessage });
       } finally {
         this.rateLimiter.releaseToken();
       }
@@ -4445,9 +4463,9 @@ export class BatchManager {
 # Filename: ./lib/shopify/optimized-fetching/index.ts
 # Path: /Users/admin/gp/commerce/./lib/shopify/optimized-fetching/index.ts
 
-// File: /lib/shopify/optimized-fetching/index.ts
+// File: lib/shopify/optimized-fetching/index.ts
 
-import { getCart, getCollections, getProduct, getProductRecommendations } from '../index';
+import { getCollections, getProduct, getProductRecommendations } from '../index';
 import { BatchManager } from './batch-manager';
 import { FetchOptions } from './types';
 
@@ -4459,34 +4477,45 @@ export class OptimizedShopifyClient {
   }
 
   async getProductPageData(handle: string, options: FetchOptions = {}) {
-    const [product, recommendations, collections] = await Promise.all([
-      this.batchManager.add(`product:${handle}`, () => getProduct(handle), {
+    try {
+      // First, get the product to have access to its ID
+      const product = await this.batchManager.add(`product:${handle}`, () => getProduct(handle), {
         ...options,
         priority: 'high'
-      }),
-      this.batchManager.add(`recommendations:${handle}`, () => getProductRecommendations(handle), {
-        ...options,
-        priority: 'medium'
-      }),
-      this.batchManager.add('collections', () => getCollections(), {
-        ...options,
-        priority: 'low'
-      })
-    ]);
+      });
 
-    return {
-      product,
-      recommendations,
-      collections
-    };
-  }
+      if (!product) {
+        throw new Error('Product not found');
+      }
 
-  async getCartData(cartId: string, options: FetchOptions = {}) {
-    return this.batchManager.add(`cart:${cartId}`, () => getCart(cartId), {
-      ...options,
-      cache: false, // Don't cache cart data
-      priority: 'high'
-    });
+      // Then fetch recommendations and collections in parallel
+      const [recommendations, collections] = await Promise.all([
+        this.batchManager.add(
+          `recommendations:${product.id}`,
+          () => getProductRecommendations(product.id),
+          {
+            ...options,
+            priority: 'medium'
+          }
+        ),
+        this.batchManager.add('collections', () => getCollections(), {
+          ...options,
+          priority: 'low'
+        })
+      ]);
+
+      return {
+        product,
+        recommendations,
+        collections
+      };
+    } catch (error) {
+      console.error('Error fetching product page data:', error);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to load product data');
+    }
   }
 }
 
@@ -4685,6 +4714,94 @@ export class CacheManager {
 }
 
 export const cacheManager = new CacheManager();
+
+
+# Filename: ./lib/shopify/cache/memory.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/cache/memory.ts
+
+// File: /lib/shopify/cache/memory.ts
+
+export class MemoryCache {
+  private cache: Map<string, { value: any; expires: number }> = new Map();
+  private prefix: string = 'shop:';
+
+  private getKey(key: string): string {
+    return `${this.prefix}${key}`;
+  }
+
+  async get<T>(key: string): Promise<T | null> {
+    const prefixedKey = this.getKey(key);
+    const item = this.cache.get(prefixedKey);
+
+    if (!item) return null;
+
+    if (item.expires < Date.now()) {
+      this.cache.delete(prefixedKey);
+      return null;
+    }
+
+    return item.value;
+  }
+
+  async set(key: string, value: any, ttl: number = 3600): Promise<void> {
+    const prefixedKey = this.getKey(key);
+    this.cache.set(prefixedKey, {
+      value,
+      expires: Date.now() + ttl * 1000
+    });
+  }
+
+  async del(key: string): Promise<void> {
+    const prefixedKey = this.getKey(key);
+    this.cache.delete(prefixedKey);
+  }
+}
+
+export const memoryCache = new MemoryCache();
+
+
+# Filename: ./lib/shopify/cache/index.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/cache/index.ts
+
+// File: /lib/shopify/cache/index.ts
+
+export class MemoryCache {
+  private cache: Map<string, { value: any; expires: number }> = new Map();
+  private prefix: string = 'shop:';
+
+  private getKey(key: string): string {
+    return `${this.prefix}${key}`;
+  }
+
+  async get<T>(key: string): Promise<T | null> {
+    const prefixedKey = this.getKey(key);
+    const item = this.cache.get(prefixedKey);
+
+    if (!item) return null;
+
+    if (item.expires < Date.now()) {
+      this.cache.delete(prefixedKey);
+      return null;
+    }
+
+    return item.value;
+  }
+
+  async set(key: string, value: any, ttl: number = 3600): Promise<void> {
+    const prefixedKey = this.getKey(key);
+    this.cache.set(prefixedKey, {
+      value,
+      expires: Date.now() + ttl * 1000
+    });
+  }
+
+  async del(key: string): Promise<void> {
+    const prefixedKey = this.getKey(key);
+    this.cache.delete(prefixedKey);
+  }
+}
+
+export const memoryCache = new MemoryCache();
 
 
 # Filename: ./lib/shopify/errors.ts
@@ -5314,32 +5431,55 @@ export class RateLimiter {
 export const globalRateLimiter = new RateLimiter();
 
 
-# Filename: ./lib/shopify/rate-limiter/config.ts
-# Path: /Users/admin/gp/commerce/./lib/shopify/rate-limiter/config.ts
+# Filename: ./lib/shopify/rate-limiter/types.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/rate-limiter/types.ts
 
-// File: /lib/shopify/rate-limiter/config.ts
+// File: /lib/shopify/rate-limiter/types.ts
+
+export type RateLimitMode = 'development' | 'production';
 
 export interface RateLimitConfig {
   requestsPerWindow: number;
   windowMs: number;
   maxWaitingTime: number;
+  queueTimeout: number;
 }
 
-export const rateLimitConfigs: Record<string, RateLimitConfig> = {
-  default: {
-    requestsPerWindow: 50,
-    windowMs: 60000, // 1 minute
-    maxWaitingTime: 5000 // 5 seconds
-  },
-  aggressive: {
-    requestsPerWindow: 25,
-    windowMs: 60000,
-    maxWaitingTime: 10000
-  },
-  relaxed: {
+export const rateLimitConfigs: Record<RateLimitMode, RateLimitConfig> = {
+  development: {
     requestsPerWindow: 100,
+    windowMs: 1000,
+    maxWaitingTime: 10000,
+    queueTimeout: 15000
+  },
+  production: {
+    requestsPerWindow: 50,
     windowMs: 60000,
-    maxWaitingTime: 2000
+    maxWaitingTime: 5000,
+    queueTimeout: 10000
+  }
+};
+
+
+# Filename: ./lib/shopify/rate-limiter/config.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/rate-limiter/config.ts
+
+// File: /lib/shopify/rate-limiter/config.ts
+
+import { RateLimitConfig } from './types';
+
+export const rateLimitConfigs: Record<string, RateLimitConfig> = {
+  development: {
+    requestsPerWindow: 100,
+    windowMs: 1000,
+    maxWaitingTime: 10000,
+    queueTimeout: 15000
+  },
+  production: {
+    requestsPerWindow: 50,
+    windowMs: 60000,
+    maxWaitingTime: 5000,
+    queueTimeout: 10000
   }
 };
 
@@ -5349,15 +5489,22 @@ export const rateLimitConfigs: Record<string, RateLimitConfig> = {
 
 // File: /lib/shopify/rate-limiter/advanced-limiter.ts
 
-import { RateLimitConfig, rateLimitConfigs } from './config';
+import { RateLimitConfig, rateLimitConfigs, RateLimitMode } from './types';
 
 export class AdvancedRateLimiter {
   private requests: number[] = [];
   private config: RateLimitConfig;
-  private waiting: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
+  private queue: Array<{
+    resolve: () => void;
+    reject: (err: Error) => void;
+    priority: number;
+  }> = [];
+  private processing: boolean = false;
 
-  constructor(configType: keyof typeof rateLimitConfigs = 'default') {
-    this.config = rateLimitConfigs[configType];
+  constructor() {
+    const mode: RateLimitMode =
+      process.env.NODE_ENV === 'development' ? 'development' : 'production';
+    this.config = rateLimitConfigs[mode];
   }
 
   private cleanup() {
@@ -5365,40 +5512,29 @@ export class AdvancedRateLimiter {
     this.requests = this.requests.filter((time) => now - time < this.config.windowMs);
   }
 
-  private async waitForSlot(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        const index = this.waiting.findIndex((w) => w.resolve === resolve);
-        if (index !== -1) {
-          this.waiting.splice(index, 1);
-          reject(new Error('Rate limit wait timeout'));
-        }
-      }, this.config.maxWaitingTime);
+  private async processQueue() {
+    if (this.processing) return;
+    this.processing = true;
 
-      this.waiting.push({
-        resolve: () => {
-          clearTimeout(timeout);
-          resolve();
-        },
-        reject: (err: Error) => {
-          clearTimeout(timeout);
-          reject(err);
-        }
-      });
-    });
-  }
+    while (this.queue.length > 0) {
+      this.cleanup();
 
-  private processWaiting() {
-    while (this.waiting.length > 0 && this.requests.length < this.config.requestsPerWindow) {
-      const next = this.waiting.shift();
-      if (next) {
-        this.requests.push(Date.now());
-        next.resolve();
+      if (this.requests.length < this.config.requestsPerWindow) {
+        const nextRequest = this.queue.shift();
+        if (nextRequest) {
+          this.requests.push(Date.now());
+          nextRequest.resolve();
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+      } else {
+        break;
       }
     }
+
+    this.processing = false;
   }
 
-  async acquireToken(): Promise<void> {
+  async acquireToken(priority: number = 1): Promise<void> {
     this.cleanup();
 
     if (this.requests.length < this.config.requestsPerWindow) {
@@ -5406,16 +5542,34 @@ export class AdvancedRateLimiter {
       return;
     }
 
-    try {
-      await this.waitForSlot();
-    } catch (error) {
-      throw new Error(`Rate limit exceeded: ${error.message}`);
-    }
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        const index = this.queue.findIndex((item) => item.resolve === resolve);
+        if (index !== -1) {
+          this.queue.splice(index, 1);
+          reject(new Error('Rate limit queue timeout'));
+        }
+      }, this.config.queueTimeout);
+
+      this.queue.push({
+        resolve: () => {
+          clearTimeout(timeout);
+          resolve();
+        },
+        reject: (err: Error) => {
+          clearTimeout(timeout);
+          reject(err);
+        },
+        priority
+      });
+
+      this.queue.sort((a, b) => b.priority - a.priority);
+      this.processQueue();
+    });
   }
 
   releaseToken() {
-    this.cleanup();
-    this.processWaiting();
+    setTimeout(() => this.processQueue(), 0);
   }
 }
 
