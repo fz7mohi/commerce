@@ -113,8 +113,7 @@ export default async function Image() {
 # Filename: ./app/product/[handle]/page.tsx
 # Path: /Users/admin/gp/commerce/./app/product/[handle]/page.tsx
 
-import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
+// File: app/product/[handle]/page.tsx
 
 import { GridTileImage } from 'components/grid/tile';
 import Footer from 'components/layout/footer';
@@ -123,15 +122,21 @@ import { ProductProvider } from 'components/product/product-context';
 import { ProductDescription } from 'components/product/product-description';
 import { HIDDEN_PRODUCT_TAG } from 'lib/constants';
 import { getProduct, getProductRecommendations } from 'lib/shopify';
+import { shopifyClient } from 'lib/shopify/optimized-fetching';
 import { Image } from 'lib/shopify/types';
+import type { Metadata } from 'next';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 
-export async function generateMetadata(props: {
+export async function generateMetadata({
+  params
+}: {
   params: Promise<{ handle: string }>;
 }): Promise<Metadata> {
-  const params = await props.params;
-  const product = await getProduct(params.handle);
+  // Await the params
+  const { handle } = await params;
+  const product = await getProduct(handle);
 
   if (!product) return notFound();
 
@@ -164,11 +169,19 @@ export async function generateMetadata(props: {
   };
 }
 
-export default async function ProductPage(props: { params: Promise<{ handle: string }> }) {
-  const params = await props.params;
-  const product = await getProduct(params.handle);
+export default async function ProductPage({ params }: { params: Promise<{ handle: string }> }) {
+  // Await the params
+  const { handle } = await params;
 
-  if (!product) return notFound();
+  const { product, recommendations, collections } = await shopifyClient.getProductPageData(handle, {
+    cache: true,
+    ttl: 3600,
+    priority: 'high'
+  });
+
+  if (!product) {
+    notFound();
+  }
 
   const productJsonLd = {
     '@context': 'https://schema.org',
@@ -196,7 +209,7 @@ export default async function ProductPage(props: { params: Promise<{ handle: str
         }}
       />
       <div className="mx-auto max-w-screen-2xl px-4">
-        <div className="flex flex-col rounded-lg border border-neutral-200 bg-white p-8 md:p-12 lg:flex-row lg:gap-8 dark:border-neutral-800 dark:bg-black">
+        <div className="flex flex-col rounded-lg border border-neutral-200 bg-white p-8 dark:border-neutral-800 dark:bg-black md:p-12 lg:flex-row lg:gap-8">
           <div className="h-full w-full basis-full lg:basis-4/6">
             <Suspense
               fallback={
@@ -225,6 +238,7 @@ export default async function ProductPage(props: { params: Promise<{ handle: str
   );
 }
 
+// RelatedProducts component is defined as before
 async function RelatedProducts({ id }: { id: string }) {
   const relatedProducts = await getProductRecommendations(id);
 
@@ -626,12 +640,11 @@ export const metadata = {
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const cartId = (await cookies()).get('cartId')?.value;
-  // Don't await the fetch, pass the Promise to the context provider
   const cart = getCart(cartId);
 
   return (
     <html lang="en" className={GeistSans.variable}>
-      <body className="bg-neutral-50 text-black selection:bg-teal-300 dark:bg-neutral-900 dark:text-white dark:selection:bg-pink-500 dark:selection:text-white">
+      <body className="bg-primary-gray text-primary-dark selection:bg-primary selection:text-primary-white dark:bg-primary-dark dark:text-primary-gray dark:selection:bg-primary-light dark:selection:text-primary-dark transition-colors duration-300">
         <CartProvider cartPromise={cart}>
           <Navbar />
           <main>
@@ -643,7 +656,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             >
               {children}
             </Providers>
-            <Toaster closeButton />
+            <Toaster
+              closeButton
+              theme="system"
+              toastOptions={{
+                className:
+                  '!bg-primary-gray !text-primary-dark dark:!bg-primary-dark dark:!text-primary-gray',
+                style: {
+                  border: '1px solid var(--primary-default)'
+                }
+              }}
+            />
             <WelcomeToast />
           </main>
         </CartProvider>
@@ -692,17 +715,27 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 # Path: /Users/admin/gp/commerce/./app/page.tsx
 
 // app/page.tsx
-import { Carousel } from 'components/carousel';
-import { ThreeItemGrid } from 'components/grid/three-items';
+
+import { CollectionShowcase } from 'components/collection-showcase';
+import { loadCollectionData } from 'components/collection-showcase/loader';
 import { HeroBanner } from 'components/HeroBanner';
 import Footer from 'components/layout/footer';
+import { Suspense } from 'react';
 
-export default function HomePage() {
+function CollectionShowcaseFallback() {
+  return <div className="min-h-[400px] animate-pulse bg-neutral-100 dark:bg-neutral-900" />;
+}
+
+export default async function HomePage() {
+  const collections = await loadCollectionData();
+
   return (
     <>
       <HeroBanner />
-      <ThreeItemGrid />
-      <Carousel />
+      <Suspense fallback={<CollectionShowcaseFallback />}>
+        {collections.length > 0 && <CollectionShowcase collections={collections} />}
+      </Suspense>
+
       <Footer />
     </>
   );
@@ -777,6 +810,21 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+# Filename: ./env.d.ts
+# Path: /Users/admin/gp/commerce/./env.d.ts
+
+// File: /env.d.ts
+
+declare global {
+  namespace NodeJS {
+    interface ProcessEnv {
+      REDIS_URL: string;
+      SHOPIFY_RATE_LIMIT_CONFIG: 'default' | 'aggressive' | 'relaxed';
+    }
+  }
+}
+
+
 # Filename: ./next-env.d.ts
 # Path: /Users/admin/gp/commerce/./next-env.d.ts
 
@@ -790,8 +838,6 @@ model VerificationToken {
 # Filename: ./tailwind.config.ts
 # Path: /Users/admin/gp/commerce/./tailwind.config.ts
 
-// tailwind.config.ts
-
 import type { Config } from 'tailwindcss';
 import plugin from 'tailwindcss/plugin';
 
@@ -800,6 +846,16 @@ const config: Config = {
   darkMode: 'class',
   theme: {
     extend: {
+      colors: {
+        // Modern Emerald Theme
+        primary: {
+          DEFAULT: '#3DA35D', // Emerald Green
+          light: '#6DCB73', // Leaf Green
+          dark: '#333333', // Dark Charcoal
+          gray: '#E5E5E5', // Soft Gray
+          white: '#FFFFFF' // White
+        }
+      },
       fontFamily: {
         sans: ['var(--font-geist-sans)']
       },
@@ -927,20 +983,20 @@ const config: Config = {
         }
       );
     }),
-    // Glass morphism utilities
+    // Glass morphism utilities with Modern Emerald theme
     plugin(({ addUtilities }) => {
       addUtilities({
         '.glass': {
-          '@apply bg-white/[.05] backdrop-blur-[2px] backdrop-saturate-[1.8]': {}
+          '@apply bg-primary-white/[.05] backdrop-blur-[2px] backdrop-saturate-[1.8]': {}
         },
         '.glass-light': {
-          '@apply bg-white/[.5] backdrop-blur-[2px] backdrop-saturate-[1.8]': {}
+          '@apply bg-primary-white/[.5] backdrop-blur-[2px] backdrop-saturate-[1.8]': {}
         },
         '.glass-dark': {
-          '@apply bg-black/[.5] backdrop-blur-[2px] backdrop-saturate-[1.8]': {}
+          '@apply bg-primary-dark/[.5] backdrop-blur-[2px] backdrop-saturate-[1.8]': {}
         },
         '.border-glass': {
-          '@apply border border-white/[.05]': {}
+          '@apply border border-primary-white/[.05]': {}
         }
       });
     }),
@@ -955,7 +1011,7 @@ const config: Config = {
         }
       });
     }),
-    // Mask utilities
+    // Mask utilities with Modern Emerald theme gradients
     plugin(({ addUtilities }) => {
       addUtilities({
         '.mask-fade-out': {
@@ -1054,6 +1110,24 @@ CardFooter.displayName = 'CardFooter';
 export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle };
 
 
+# Filename: ./components/logo-horizontal.tsx
+# Path: /Users/admin/gp/commerce/./components/logo-horizontal.tsx
+
+import clsx from 'clsx';
+import LogoIconhorizontal from './icons/logo-horizontal';
+
+export default function LogoHorizontal({ size }: { size?: 'sm' | undefined }) {
+  return (
+    <LogoIconhorizontal
+      className={clsx({
+        'h-[36px] w-auto px-4': !size, // Height controlled, width auto with padding
+        'h-[24px] w-auto px-3': size === 'sm' // Height controlled, width auto with padding
+      })}
+    />
+  );
+}
+
+
 # Filename: ./components/prose.tsx
 # Path: /Users/admin/gp/commerce/./components/prose.tsx
 
@@ -1082,29 +1156,14 @@ import LogoIcon from './icons/logo';
 
 export default function LogoSquare({ size }: { size?: 'sm' | undefined }) {
   return (
-    <div
-      className={clsx(
-        'flex flex-none items-center justify-center border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-black',
-        {
-          'h-[40px] w-[40px] rounded-xl': !size,
-          'h-[30px] w-[30px] rounded-lg': size === 'sm'
-        }
-      )}
-    >
-      <LogoIcon
-        className={clsx({
-          'h-[16px] w-[16px]': !size,
-          'h-[10px] w-[10px]': size === 'sm'
-        })}
-      />
-    </div>
+    <LogoIcon
+      className={clsx({
+        'h-[40px] w-[40px]': !size, // Increased from 16px to 40px
+        'h-[28px] w-[28px]': size === 'sm' // Increased from 10px to 28px
+      })}
+    />
   );
 }
-
-
-# Filename: ./components/auth/password-strength.tsx
-# Path: /Users/admin/gp/commerce/./components/auth/password-strength.tsx
-
 
 
 # Filename: ./components/opengraph-image.tsx
@@ -1261,7 +1320,7 @@ export default function MobileMenu({ menu }: { menu: Menu[] }) {
 # Path: /Users/admin/gp/commerce/./components/layout/navbar/index.tsx
 
 import CartModal from 'components/cart/modal';
-import LogoSquare from 'components/logo-square';
+import LogoHorizontal from 'components/logo-horizontal';
 import { getMenu } from 'lib/shopify';
 import { Menu } from 'lib/shopify/types';
 import Link from 'next/link';
@@ -1275,47 +1334,64 @@ export async function Navbar() {
   const menu = await getMenu('next-js-frontend-header-menu');
 
   return (
-    <nav className="relative flex items-center justify-between p-4 lg:px-6">
-      <div className="block flex-none md:hidden">
-        <Suspense fallback={null}>
-          <MobileMenu menu={menu} />
-        </Suspense>
-      </div>
-      <div className="flex w-full items-center">
-        <div className="flex w-full md:w-1/3">
-          <Link
-            href="/"
-            prefetch={true}
-            className="mr-2 flex w-full items-center justify-center md:w-auto lg:mr-6"
-          >
-            <LogoSquare />
-            <div className="ml-2 flex-none text-sm font-medium uppercase md:hidden lg:block">
-              {SITE_NAME}
+    <nav className="bg-primary-dark relative flex items-center justify-between shadow-md">
+      <div className="flex w-full flex-col">
+        {/* Upper Nav Section - Optional Announcement or Secondary Nav */}
+        <div className="bg-primary/90 text-primary-white hidden w-full px-6 py-1 text-center text-sm md:block">
+          Free shipping on orders over $50
+        </div>
+
+        {/* Main Nav Section */}
+        <div className="flex w-full items-center p-4 lg:px-6">
+          {/* Mobile Menu Button */}
+          <div className="block flex-none md:hidden">
+            <Suspense fallback={null}>
+              <MobileMenu menu={menu} />
+            </Suspense>
+          </div>
+
+          {/* Logo and Menu Items */}
+          <div className="flex w-full items-center">
+            <div className="flex w-full md:w-1/3">
+              <Link
+                href="/"
+                prefetch={true}
+                className="mr-2 flex w-full items-center justify-center md:w-auto lg:mr-6"
+              >
+                <div className="text-primary-white ml-2 flex-none text-sm font-medium uppercase md:hidden lg:block">
+                  <LogoHorizontal />
+                </div>
+              </Link>
+
+              {menu.length ? (
+                <ul className="hidden gap-6 text-sm md:flex md:items-center">
+                  {menu.map((item: Menu) => (
+                    <li key={item.title}>
+                      <Link
+                        href={item.path}
+                        prefetch={true}
+                        className="text-primary-gray hover:text-primary-light dark:text-primary-gray/90 dark:hover:text-primary-light transition-colors duration-200 hover:underline hover:underline-offset-4"
+                      >
+                        {item.title}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
-          </Link>
-          {menu.length ? (
-            <ul className="hidden gap-6 text-sm md:flex md:items-center">
-              {menu.map((item: Menu) => (
-                <li key={item.title}>
-                  <Link
-                    href={item.path}
-                    prefetch={true}
-                    className="text-neutral-500 underline-offset-4 hover:text-black hover:underline dark:text-neutral-400 dark:hover:text-neutral-300"
-                  >
-                    {item.title}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-        <div className="hidden justify-center md:flex md:w-1/3">
-          <Suspense fallback={<SearchSkeleton />}>
-            <Search />
-          </Suspense>
-        </div>
-        <div className="flex justify-end md:w-1/3">
-          <CartModal />
+
+            {/* Search Bar */}
+            <div className="hidden justify-center md:flex md:w-1/3">
+              <Suspense fallback={<SearchSkeleton />}>
+                <Search />
+              </Suspense>
+            </div>
+
+            {/* Cart */}
+            <div className="flex justify-end md:w-1/3">
+              <CartModal />
+            </div>
+          </div>
         </div>
       </div>
     </nav>
@@ -2223,6 +2299,111 @@ const Price = ({
 export default Price;
 
 
+# Filename: ./components/icons/logo-horizontal.tsx
+# Path: /Users/admin/gp/commerce/./components/icons/logo-horizontal.tsx
+
+import clsx from 'clsx';
+
+export default function LogoIconhorizontal(props: React.ComponentProps<'svg'>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      aria-label={`${process.env.SITE_NAME} logo`}
+      viewBox="0 0 798.11 213.14"
+      {...props}
+      className={clsx('h-auto w-full', props.className)}
+    >
+      {/* Leaf sections */}
+      <path
+        className="fill-[#88BC85]"
+        d="M490.33,171.46c-28.4,6.95-56.61,14.54-85.22,21.35c-1.36,0.21-2.81,0.32-4.16,0.55l-222.41-8.76
+        c-2.43-0.22-4.8-0.43-7.28-0.55c-24.17-4.02-50.47-5.73-73.79-10.4c10.17-0.81,20.43-1.41,30.62-2.21L490.33,171.46z"
+      />
+      <path
+        className="fill-[#2A7138]"
+        d="M528.79,179.68c-72.74,36.22-223.95,30.62-317.38,26.76L0.3,184.6c-1.41-0.39,2.5-0.81,4.68-1.09
+        c44.2,2.3,130.27-1.21,166.29,0.55c2.47,0.12,4.84,0.32,7.28,0.55c20.45,2.36,145.42,24.13,153.42,24.06
+        c6.58-0.06,57.09-13.28,68.99-15.3c1.35-0.23,2.79-0.34,4.16-0.55C431.97,188.71,495.37,184.06,528.79,179.68z"
+      />
+      <path
+        className="fill-[#5E9A57]"
+        d="M545.42,169.82c-6.34,5.17-8.84,5.98-16.63,9.85c-33.42,4.38-96.82,9.03-123.68,13.14
+        c28.62-6.81,56.83-14.4,85.22-21.35c2.66-0.65,4.57-0.69,6.24-1.09C512.65,171.92,529.14,169.14,545.42,169.82z"
+      />
+      <path
+        className="fill-[#5F9958]"
+        d="M97.48,173.65c23.32,4.68,49.62,6.38,73.79,10.4c-36.02-1.76-122.09,1.76-166.29-0.55
+        C24.18,181.03,78.73,175.15,97.48,173.65z"
+      />
+      <path
+        className="fill-[#86BF83]"
+        d="M545.42,169.82c-16.28-0.69-32.76,2.09-48.85,0.55c20.13-4.92,45.98-7.68,61.84-20.8
+        C560.04,156.93,552.72,163.87,545.42,169.82z"
+      />
+      <path
+        className="fill-[#5F9A55]"
+        d="M400.95,193.36c-11.89,2.02-62.41,15.24-68.99,15.3c-8,0.07-132.97-21.7-153.42-24.06L400.95,193.36z"
+      />
+
+      {/* Top decorative elements */}
+      <path
+        className="fill-[#2C783B]"
+        d="M754.6,1.42c-11.5,12.42-19.73,11.58-31.37,0C728.36-0.47,749.49-0.48,754.6,1.42z"
+      />
+      <path
+        className="fill-[#539745]"
+        d="M754.6,1.42c1.69,0.63,16.77,12.37,16.8,13.44c-4.23,1.81-19.14,1.08-21.13,2.96
+        c-2.35,2.22-3.8,31.29-12.48,37.37c-11.31-10.85-20.36-27.49-30.09-39.96c-0.07-1.8,13.51-13.07,15.52-13.81
+        C734.88,13,743.1,13.84,754.6,1.42z"
+      />
+      <path
+        className="fill-[#28753A]"
+        d="M723,16.32c1.74-0.15,5.69-1.26,6.84,0.34c0.95,1.31,5.59,27.4,6.28,31.8
+        c-5.17-11.07-11.65-21.52-19.59-30.8C716.77,17.25,721.92,16.41,723,16.32z"
+      />
+      <polygon className="fill-[#2C783B]" points="716.53,17.66 730.41,14.87 736.01,47.78" />
+      <polyline
+        className="fill-[#2C783B]"
+        points="750.06,13.75 771.41,14.7 739.48,58.37 737.8,55.03"
+      />
+
+      {/* Text elements */}
+      <g className="fill-[#414042] dark:fill-white">
+        <path
+          d="M116.79,158.54l-0.87-12.04C55.69,188.83-16.39,133.44,3.32,63.12c16.56-59.11,96.74-71.75,131.9-22.9
+          l-19.28,16.87C80.53,14.41,23.01,42.78,27.83,91.9c2.76,28.12,31.64,51.65,64.69,39.78c10.05-3.61,27.21-15.75,22.56-28.16H75.1
+          V78.59h67.92v79.95H116.79z"
+        />
+        <path
+          d="M299.91,49.36l1.71,12.03c20.05-19.08,51.1-21.84,67.07,3.5c19.31-22.51,61.39-27.92,71.82,3.78
+          c4.93,14.97,3.04,69.59,2.98,89.87h-26.65c-2.31-18.13,1.96-58.21-0.82-70.54c-6.62-29.34-43.46-16.72-43.46,5.63v64.91h-26.65
+          V94.49c0-7.13-5.78-18.67-12.69-21.7c-17.6-7.71-32.02,9.44-32.02,19.12v66.63h-27.51V49.36H299.91z"
+        />
+        <path
+          d="M178.69,111.26c5.57,31.11,42.26,36.1,62.64,13.82l16.01,14.98c-59.01,59.32-136.7-14.83-94.41-71.21
+          c32.91-43.87,109.37-19.66,100.01,42.41H178.69z M179.55,93.2h56.74C232.33,61.07,184.66,61.57,179.55,93.2z"
+        />
+        <path
+          d="M497.04,47.04c14.73-0.95,34.56,3.58,45.58,13.92l-13.15,17.52c-37.27-23.02-56.42-0.76-42.01,9.43
+          c12.71,8.98,68.5,1.98,58.35,45.74c-8.51,36.71-68.08,32.61-90.71,12.44l12.48-18.5c36.39,24.68,65.91,6.69,50.56-6.74
+          c-11-9.62-52.87-4.37-59.21-31.06C452.8,63.99,473.31,48.56,497.04,47.04z"
+        />
+        <path
+          d="M586.19,49.36l0.87,12.9c44.2-39.53,103.14,1.43,89.41,57.61c-9.51,38.89-59.87,56.45-88.57,26.65l-1.28,0.43
+          v62.33h-26.65V49.36H586.19z M611.99,71.71c-14.63,0-40.48,32.37-15.66,56.07c25.19,24.06,64.7-1.49,53.69-34.77
+          c-3.49-10.54-17.71-21.3-23.41-21.3c-3.14,0-6.33-0.15-9.46,0C615.44,71.79,613.7,71.71,611.99,71.71z"
+        />
+        <path
+          d="M712.57,111.26c-5.21,2.94,22.35,50.65,62.64,13.82l15.15,14.98c-18.34,21.59-47.51,27.51-73.24,15.66
+          c-46.23-21.31-40.05-94.25,9.39-107.09l12.73,15.34l13.03-16.24c22.07,1.45,45.84,28.84,45.84,50.2v13.33H712.57z M713.43,93.2
+          h56.74C765.92,61.48,718.72,61.09,713.43,93.2z"
+        />
+      </g>
+    </svg>
+  );
+}
+
+
 # Filename: ./components/icons/logo.tsx
 # Path: /Users/admin/gp/commerce/./components/icons/logo.tsx
 
@@ -2233,12 +2414,85 @@ export default function LogoIcon(props: React.ComponentProps<'svg'>) {
     <svg
       xmlns="http://www.w3.org/2000/svg"
       aria-label={`${process.env.SITE_NAME} logo`}
-      viewBox="0 0 32 28"
+      viewBox="0 0 313.83 304.7"
       {...props}
-      className={clsx('h-4 w-4 fill-black dark:fill-white', props.className)}
+      className={clsx('h-8 w-8', props.className)}
     >
-      <path d="M21.5758 9.75769L16 0L0 28H11.6255L21.5758 9.75769Z" />
-      <path d="M26.2381 17.9167L20.7382 28H32L26.2381 17.9167Z" />
+      {/* Background */}
+      <path
+        className="fill-[#414042] dark:fill-[#333333]"
+        d="M276.45,304.7H37.38C16.74,304.7,0,287.96,0,267.31V37.38C0,16.74,16.74,0,37.38,0h239.06
+        c20.65,0,37.38,16.74,37.38,37.38v229.93C313.83,287.96,297.09,304.7,276.45,304.7z"
+      />
+
+      {/* Leaf sections - using Modern Emerald theme colors */}
+      <path
+        className="fill-[#6DCB73]" // Leaf Green
+        d="M248.42,257.72c-12.6,5.01-25.11,10.48-37.8,15.38c-0.61,0.15-1.25,0.23-1.84,0.39l-98.66-6.31
+        c-1.08-0.16-2.13-0.31-3.23-0.39c-10.72-2.9-22.39-4.12-32.73-7.49c4.51-0.58,9.06-1.02,13.58-1.59L248.42,257.72z"
+      />
+      <path
+        className="fill-[#3DA35D]" // Emerald Green
+        d="M265.47,263.64c-32.27,26.09-99.34,22.06-140.78,19.27l-93.65-15.73c-0.63-0.28,1.11-0.58,2.07-0.78
+        c19.6,1.66,57.79-0.87,73.76,0.39c1.1,0.09,2.15,0.23,3.23,0.39c9.07,1.7,64.51,17.38,68.06,17.33c2.92-0.04,25.33-9.57,30.6-11.02
+        c0.6-0.16,1.24-0.24,1.84-0.39C222.53,270.14,250.65,266.79,265.47,263.64z"
+      />
+      <path
+        className="fill-[#3DA35D]" // Emerald Green
+        d="M272.85,256.54c-2.81,3.73-3.92,4.3-7.38,7.1c-14.83,3.15-42.95,6.51-54.86,9.46
+        c12.69-4.9,25.21-10.37,37.8-15.38c1.18-0.47,2.03-0.5,2.77-0.79C258.32,258.05,265.63,256.04,272.85,256.54z"
+      />
+      <path
+        className="fill-[#3DA35D]" // Emerald Green
+        d="M74.15,259.3c10.35,3.37,22.01,4.6,32.73,7.49c-15.98-1.27-54.16,1.27-73.76-0.39
+        C41.64,264.61,65.83,260.37,74.15,259.3z"
+      />
+      <path
+        className="fill-[#6DCB73]" // Leaf Green
+        d="M272.85,256.54c-7.22-0.49-14.53,1.51-21.67,0.39c8.93-3.54,20.4-5.53,27.43-14.98
+        C279.34,247.25,276.09,252.25,272.85,256.54z"
+      />
+      <path
+        className="fill-[#3DA35D]" // Emerald Green
+        d="M208.77,273.49c-5.28,1.45-27.69,10.98-30.6,11.02c-3.55,0.05-58.99-15.63-68.06-17.33L208.77,273.49z"
+      />
+
+      {/* Main letter/symbol in white */}
+      <path
+        className="fill-white"
+        d="M215.24,234.77l-1.16-16.06C133.7,275.19,37.53,201.29,63.83,107.45c22.1-78.86,129.07-95.73,175.99-30.56
+        L214.09,99.4C166.85,42.47,90.11,80.31,96.53,145.86c3.68,37.52,42.21,68.91,86.31,53.08c13.42-4.82,36.3-21.01,30.1-37.58H159.6
+        V128.1h90.62v106.68H215.24z"
+      />
+
+      {/* Top decorative elements */}
+      <polygon
+        className="fill-[#414042] dark:fill-[#333333]"
+        points="132.57,31.71 158.33,65.08 185.64,31.71"
+      />
+      <path
+        className="fill-[#3DA35D]" // Emerald Green
+        d="M171.45,14.66c-9.54,10.3-16.36,9.6-26.02,0C149.68,13.09,167.2,13.09,171.45,14.66z"
+      />
+      <path
+        className="fill-[#3DA35D]" // Emerald Green
+        d="M171.45,14.66c1.4,0.52,13.91,10.26,13.94,11.15c-3.51,1.5-15.88,0.89-17.52,2.45
+        c-1.95,1.84-3.15,25.95-10.35,31c-9.38-9-16.89-22.8-24.95-33.14c-0.06-1.5,11.21-10.84,12.87-11.45
+        C155.08,24.27,161.91,24.97,171.45,14.66z"
+      />
+      <path
+        className="fill-[#3DA35D]" // Emerald Green
+        d="M145.23,27.02c1.45-0.12,4.72-1.04,5.67,0.28c0.79,1.09,4.64,22.72,5.21,26.37
+        c-4.29-9.18-9.66-17.85-16.25-25.55C140.06,27.79,144.34,27.1,145.23,27.02z"
+      />
+      <polygon
+        className="fill-[#3DA35D]" // Emerald Green
+        points="139.87,28.13 151.38,25.81 156.02,53.11"
+      />
+      <polyline
+        className="fill-[#3DA35D]" // Emerald Green
+        points="167.67,24.89 185.38,25.67 158.9,61.89 157.51,59.12"
+      />
     </svg>
   );
 }
@@ -3421,6 +3675,329 @@ function CheckoutButton() {
 }
 
 
+# Filename: ./components/collection-showcase/index.tsx
+# Path: /Users/admin/gp/commerce/./components/collection-showcase/index.tsx
+
+// components/collection-showcase/index.tsx
+
+'use client';
+
+import { addItem } from 'components/cart/actions';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Product } from 'lib/shopify/types';
+import { ChevronRight, Heart, Share2, ShoppingCart, Sparkles } from 'lucide-react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { useState } from 'react';
+import { toast } from 'sonner';
+
+interface CollectionShowcaseProps {
+  collections: Array<{
+    title: string;
+    handle: string;
+    products: Product[];
+  }>;
+}
+
+const cardVariants = {
+  hover: {
+    y: -8,
+    transition: { duration: 0.3, ease: 'easeOut' }
+  }
+};
+
+interface ProductCardProps {
+  product: Product;
+  onAddToCart: (productId: string) => Promise<void>;
+}
+
+const ProductCard = ({ product, onAddToCart }: ProductCardProps) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const [isLiked, setIsLiked] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleShare = async () => {
+    try {
+      await navigator.share({
+        title: product.title,
+        text: product.description,
+        url: `/product/${product.handle}`
+      });
+    } catch {
+      navigator.clipboard.writeText(window.location.origin + `/product/${product.handle}`);
+      toast.success('Link copied to clipboard');
+    }
+  };
+
+  const handleAddToCart = async () => {
+    setIsLoading(true);
+    try {
+      await onAddToCart(product.id);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const formatPrice = (amount: string, currency: string) => {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 0
+    }).format(parseFloat(amount));
+  };
+
+  return (
+    <motion.div
+      variants={cardVariants}
+      whileHover="hover"
+      initial="initial"
+      animate="animate"
+      className="group relative flex w-[280px] flex-none snap-start flex-col md:w-full"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div className="relative overflow-hidden rounded-3xl bg-white transition-shadow hover:shadow-xl dark:bg-neutral-900">
+        {/* Image Container */}
+        <div className="relative aspect-[3/4]">
+          {product.featuredImage?.url && (
+            <Image
+              src={product.featuredImage.url}
+              alt={product.featuredImage.altText || product.title}
+              fill
+              sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 768px) 50vw, 280px"
+              className="object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+            />
+          )}
+
+          {/* Overlay with Gradient */}
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/60" />
+
+          {/* Quick Action Buttons - Top Right */}
+          <div className="absolute right-4 top-4 flex flex-col gap-2">
+            <motion.button
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1 }}
+              onClick={() => setIsLiked(!isLiked)}
+              className={`flex h-10 w-10 items-center justify-center rounded-full bg-white/90 shadow-lg backdrop-blur-sm transition-all hover:scale-110 dark:bg-black/90 ${
+                isLiked ? 'text-red-500 hover:bg-red-50 dark:hover:bg-red-950' : ''
+              }`}
+            >
+              <Heart className={`h-5 w-5 ${isLiked ? 'fill-current' : ''}`} />
+            </motion.button>
+            <motion.button
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2 }}
+              onClick={handleShare}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/90 shadow-lg backdrop-blur-sm transition-all hover:scale-110 hover:bg-blue-50 dark:bg-black/90 dark:hover:bg-blue-950"
+            >
+              <Share2 className="h-5 w-5" />
+            </motion.button>
+          </div>
+
+          {/* Product Info Overlay - Always Visible */}
+          <div className="absolute bottom-0 left-0 right-0 p-4">
+            {/* Product Tag - If available */}
+            {product.tags && product.tags.length > 0 && (
+              <div className="mb-2">
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-600/90 px-3 py-1 text-xs font-medium text-white backdrop-blur-sm">
+                  <Sparkles className="h-3 w-3" />
+                  {product.tags[0]}
+                </span>
+              </div>
+            )}
+
+            {/* Title and Price */}
+            <Link href={`/product/${product.handle}`} className="block">
+              <h3 className="mb-1 text-lg font-semibold text-white">{product.title}</h3>
+              <div className="flex items-center justify-between">
+                <p className="text-lg font-medium text-white">
+                  {formatPrice(
+                    product.priceRange.minVariantPrice.amount,
+                    product.priceRange.minVariantPrice.currencyCode
+                  )}
+                </p>
+                <p className="text-sm text-white/80">
+                  {product.variants.length} {product.variants.length === 1 ? 'variant' : 'variants'}
+                </p>
+              </div>
+            </Link>
+          </div>
+        </div>
+
+        {/* Bottom Action Bar */}
+        <div className="flex items-center justify-between border-t border-neutral-200 p-4 dark:border-neutral-800">
+          <Link
+            href={`/product/${product.handle}`}
+            className="group/link flex items-center gap-2 text-sm font-medium"
+          >
+            View Details
+            <ChevronRight className="h-4 w-4 transition-transform group-hover/link:translate-x-1" />
+          </Link>
+          <button
+            onClick={handleAddToCart}
+            disabled={isLoading}
+            className="flex h-10 items-center gap-2 rounded-full bg-blue-600 px-4 text-sm font-medium text-white transition-all hover:bg-blue-700 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isLoading ? (
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            ) : (
+              <>
+                <ShoppingCart className="h-4 w-4" />
+                Add to Cart
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+export function CollectionShowcase({ collections }: CollectionShowcaseProps) {
+  const [activeCollection, setActiveCollection] = useState<string>('all');
+
+  const allProducts = Array.from(
+    new Set(collections.flatMap((collection) => collection.products.map((product) => product.id)))
+  )
+    .map((productId) =>
+      collections
+        .flatMap((collection) => collection.products)
+        .find((product) => product.id === productId)
+    )
+    .filter((product): product is Product => !!product);
+
+  const displayProducts =
+    activeCollection === 'all'
+      ? allProducts
+      : collections.find((c) => c.handle === activeCollection)?.products || [];
+
+  const handleAddToCart = async (productId: string) => {
+    try {
+      const product = displayProducts.find((p) => p.id === productId);
+      if (!product?.variants[0]) return;
+
+      await addItem(null, product.variants[0].id);
+      toast.success('Added to cart', {
+        description: `${product.title} has been added to your cart.`
+      });
+    } catch (error) {
+      toast.error('Failed to add to cart', {
+        description: 'Please try again later.'
+      });
+    }
+  };
+
+  return (
+    <section className="relative pb-12 pt-8">
+      {/* Collection Pills */}
+      <div className="mb-8">
+        <div className="mx-auto max-w-screen-2xl px-4">
+          <h2 className="mb-6 text-2xl font-bold tracking-tight md:text-3xl">Shop by Collection</h2>
+          <div className="scrollbar-none flex gap-3 overflow-x-auto pb-4 md:pb-2">
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setActiveCollection('all')}
+              className={`flex-none rounded-full border-2 px-6 py-2.5 text-sm font-medium transition-colors ${
+                activeCollection === 'all'
+                  ? 'border-blue-600 bg-blue-600 text-white'
+                  : 'border-neutral-200 bg-white hover:border-blue-600/50 dark:border-neutral-800 dark:bg-black dark:hover:border-blue-500/50'
+              }`}
+            >
+              View All
+            </motion.button>
+            {collections.map((collection) => (
+              <motion.button
+                key={collection.handle}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setActiveCollection(collection.handle)}
+                className={`flex-none rounded-full border-2 px-6 py-2.5 text-sm font-medium transition-colors ${
+                  activeCollection === collection.handle
+                    ? 'border-blue-600 bg-blue-600 text-white'
+                    : 'border-neutral-200 bg-white hover:border-blue-600/50 dark:border-neutral-800 dark:bg-black dark:hover:border-blue-500/50'
+                }`}
+              >
+                {collection.title}
+              </motion.button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Products Grid */}
+      <div className="mx-auto max-w-screen-2xl px-4">
+        <div className="scrollbar-none flex snap-x snap-mandatory gap-6 overflow-x-auto pb-8 md:grid md:grid-cols-2 md:gap-8 lg:grid-cols-3 xl:grid-cols-4">
+          <AnimatePresence mode="wait">
+            {displayProducts.map((product) => (
+              <ProductCard key={product.id} product={product} onAddToCart={handleAddToCart} />
+            ))}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Mobile Scroll Indicator */}
+      <div className="mt-4 flex justify-center gap-1 md:hidden">
+        <div className="h-1 w-10 rounded-full bg-blue-600" />
+        <div className="h-1 w-2 rounded-full bg-neutral-200 dark:bg-neutral-800" />
+        <div className="h-1 w-2 rounded-full bg-neutral-200 dark:bg-neutral-800" />
+      </div>
+    </section>
+  );
+}
+
+export default CollectionShowcase;
+
+
+# Filename: ./components/collection-showcase/loader.ts
+# Path: /Users/admin/gp/commerce/./components/collection-showcase/loader.ts
+
+// components/collection-showcase/loader.ts
+
+import { getCollectionProducts, getCollections } from 'lib/shopify';
+import { Product } from 'lib/shopify/types';
+
+export interface LoadedCollection {
+  title: string;
+  handle: string;
+  products: Product[];
+}
+
+export async function loadCollectionData(): Promise<LoadedCollection[]> {
+  try {
+    // Get all collections using the Shopify function
+    const collections = await getCollections();
+
+    // Filter out hidden collections and the 'All' collection
+    const visibleCollections = collections.filter(
+      (collection) =>
+        collection.handle && !collection.handle.startsWith('hidden') && collection.handle !== 'all'
+    );
+
+    // Fetch products for each collection
+    const collectionsWithProducts = await Promise.all(
+      visibleCollections.map(async (collection) => {
+        const products = await getCollectionProducts({
+          collection: collection.handle,
+          sortKey: 'BEST_SELLING'
+        });
+
+        return {
+          title: collection.title,
+          handle: collection.handle,
+          products: products
+        };
+      })
+    );
+
+    return collectionsWithProducts;
+  } catch (error) {
+    console.error('Error loading collection data:', error);
+    return [];
+  }
+}
+
+
 # Filename: ./components/loading-dots.tsx
 # Path: /Users/admin/gp/commerce/./components/loading-dots.tsx
 
@@ -3733,6 +4310,189 @@ function findError<T extends object>(error: T): boolean {
 }
 
 
+# Filename: ./lib/shopify/optimized-fetching/types.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/optimized-fetching/types.ts
+
+// File: /lib/shopify/optimized-fetching/types.ts
+
+export interface FetchOptions {
+  cache?: boolean;
+  ttl?: number;
+  priority?: 'high' | 'medium' | 'low';
+  retries?: number;
+}
+
+export interface BatchedRequest {
+  key: string;
+  operation: () => Promise<any>;
+  options: FetchOptions;
+}
+
+
+# Filename: ./lib/shopify/optimized-fetching/batch-manager.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/optimized-fetching/batch-manager.ts
+
+// File: /lib/shopify/optimized-fetching/batch-manager.ts
+
+import { cacheManager } from '../cache/redis';
+import { AdvancedRateLimiter } from '../rate-limiter/advanced-limiter';
+import { BatchedRequest, FetchOptions } from './types';
+
+export class BatchManager {
+  private batchWindow: number = 50; // ms
+  private currentBatch: BatchedRequest[] = [];
+  private batchPromise: Promise<any> | null = null;
+  private rateLimiter: AdvancedRateLimiter;
+
+  constructor() {
+    this.rateLimiter = new AdvancedRateLimiter('default');
+  }
+
+  private async executeBatch(requests: BatchedRequest[]): Promise<Map<string, any>> {
+    const results = new Map();
+
+    // Sort by priority
+    const sortedRequests = requests.sort((a, b) => {
+      const priorities = { high: 0, medium: 1, low: 2 };
+      return (
+        priorities[a.options.priority || 'medium'] - priorities[b.options.priority || 'medium']
+      );
+    });
+
+    for (const request of sortedRequests) {
+      try {
+        await this.rateLimiter.acquireToken();
+
+        // Check cache first if enabled
+        if (request.options.cache) {
+          const cached = await cacheManager.get(request.key);
+          if (cached) {
+            results.set(request.key, cached);
+            continue;
+          }
+        }
+
+        // Execute request with retries
+        const result = await this.executeWithRetries(request);
+
+        // Cache result if enabled
+        if (request.options.cache) {
+          await cacheManager.set(request.key, result, request.options.ttl);
+        }
+
+        results.set(request.key, result);
+      } catch (error) {
+        results.set(request.key, { error: error.message });
+      } finally {
+        this.rateLimiter.releaseToken();
+      }
+    }
+
+    return results;
+  }
+
+  private async executeWithRetries(request: BatchedRequest, attempt: number = 1): Promise<any> {
+    try {
+      return await request.operation();
+    } catch (error) {
+      if (attempt < (request.options.retries || 3)) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        return this.executeWithRetries(request, attempt + 1);
+      }
+      throw error;
+    }
+  }
+
+  async add<T>(key: string, operation: () => Promise<T>, options: FetchOptions = {}): Promise<T> {
+    const request: BatchedRequest = {
+      key,
+      operation,
+      options: {
+        cache: true,
+        ttl: 3600,
+        priority: 'medium',
+        retries: 3,
+        ...options
+      }
+    };
+
+    if (!this.batchPromise) {
+      this.currentBatch = [];
+      this.batchPromise = new Promise((resolve) => {
+        setTimeout(async () => {
+          const batch = this.currentBatch;
+          this.currentBatch = [];
+          this.batchPromise = null;
+          resolve(await this.executeBatch(batch));
+        }, this.batchWindow);
+      });
+    }
+
+    this.currentBatch.push(request);
+    const results = await this.batchPromise;
+    const result = results.get(key);
+
+    if (result?.error) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  }
+}
+
+
+# Filename: ./lib/shopify/optimized-fetching/index.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/optimized-fetching/index.ts
+
+// File: /lib/shopify/optimized-fetching/index.ts
+
+import { getCart, getCollections, getProduct, getProductRecommendations } from '../index';
+import { BatchManager } from './batch-manager';
+import { FetchOptions } from './types';
+
+export class OptimizedShopifyClient {
+  private batchManager: BatchManager;
+
+  constructor() {
+    this.batchManager = new BatchManager();
+  }
+
+  async getProductPageData(handle: string, options: FetchOptions = {}) {
+    const [product, recommendations, collections] = await Promise.all([
+      this.batchManager.add(`product:${handle}`, () => getProduct(handle), {
+        ...options,
+        priority: 'high'
+      }),
+      this.batchManager.add(`recommendations:${handle}`, () => getProductRecommendations(handle), {
+        ...options,
+        priority: 'medium'
+      }),
+      this.batchManager.add('collections', () => getCollections(), {
+        ...options,
+        priority: 'low'
+      })
+    ]);
+
+    return {
+      product,
+      recommendations,
+      collections
+    };
+  }
+
+  async getCartData(cartId: string, options: FetchOptions = {}) {
+    return this.batchManager.add(`cart:${cartId}`, () => getCart(cartId), {
+      ...options,
+      cache: false, // Don't cache cart data
+      priority: 'high'
+    });
+  }
+}
+
+export const shopifyClient = new OptimizedShopifyClient();
+
+
 # Filename: ./lib/shopify/fragments/image.ts
 # Path: /Users/admin/gp/commerce/./lib/shopify/fragments/image.ts
 
@@ -3886,6 +4646,45 @@ const cartFragment = /* GraphQL */ `
 `;
 
 export default cartFragment;
+
+
+# Filename: ./lib/shopify/cache/redis.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/cache/redis.ts
+
+// File: /lib/shopify/cache/redis.ts
+
+import Redis from 'ioredis';
+
+const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+
+export class CacheManager {
+  private redis: Redis;
+  private prefix: string = 'shop:';
+  private defaultTTL: number = 3600; // 1 hour
+
+  constructor() {
+    this.redis = redis;
+  }
+
+  private getKey(key: string): string {
+    return `${this.prefix}${key}`;
+  }
+
+  async get<T>(key: string): Promise<T | null> {
+    const data = await this.redis.get(this.getKey(key));
+    return data ? JSON.parse(data) : null;
+  }
+
+  async set(key: string, value: any, ttl: number = this.defaultTTL): Promise<void> {
+    await this.redis.setex(this.getKey(key), ttl, JSON.stringify(value));
+  }
+
+  async del(key: string): Promise<void> {
+    await this.redis.del(this.getKey(key));
+  }
+}
+
+export const cacheManager = new CacheManager();
 
 
 # Filename: ./lib/shopify/errors.ts
@@ -4513,6 +5312,112 @@ export class RateLimiter {
 }
 
 export const globalRateLimiter = new RateLimiter();
+
+
+# Filename: ./lib/shopify/rate-limiter/config.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/rate-limiter/config.ts
+
+// File: /lib/shopify/rate-limiter/config.ts
+
+export interface RateLimitConfig {
+  requestsPerWindow: number;
+  windowMs: number;
+  maxWaitingTime: number;
+}
+
+export const rateLimitConfigs: Record<string, RateLimitConfig> = {
+  default: {
+    requestsPerWindow: 50,
+    windowMs: 60000, // 1 minute
+    maxWaitingTime: 5000 // 5 seconds
+  },
+  aggressive: {
+    requestsPerWindow: 25,
+    windowMs: 60000,
+    maxWaitingTime: 10000
+  },
+  relaxed: {
+    requestsPerWindow: 100,
+    windowMs: 60000,
+    maxWaitingTime: 2000
+  }
+};
+
+
+# Filename: ./lib/shopify/rate-limiter/advanced-limiter.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/rate-limiter/advanced-limiter.ts
+
+// File: /lib/shopify/rate-limiter/advanced-limiter.ts
+
+import { RateLimitConfig, rateLimitConfigs } from './config';
+
+export class AdvancedRateLimiter {
+  private requests: number[] = [];
+  private config: RateLimitConfig;
+  private waiting: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
+
+  constructor(configType: keyof typeof rateLimitConfigs = 'default') {
+    this.config = rateLimitConfigs[configType];
+  }
+
+  private cleanup() {
+    const now = Date.now();
+    this.requests = this.requests.filter((time) => now - time < this.config.windowMs);
+  }
+
+  private async waitForSlot(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        const index = this.waiting.findIndex((w) => w.resolve === resolve);
+        if (index !== -1) {
+          this.waiting.splice(index, 1);
+          reject(new Error('Rate limit wait timeout'));
+        }
+      }, this.config.maxWaitingTime);
+
+      this.waiting.push({
+        resolve: () => {
+          clearTimeout(timeout);
+          resolve();
+        },
+        reject: (err: Error) => {
+          clearTimeout(timeout);
+          reject(err);
+        }
+      });
+    });
+  }
+
+  private processWaiting() {
+    while (this.waiting.length > 0 && this.requests.length < this.config.requestsPerWindow) {
+      const next = this.waiting.shift();
+      if (next) {
+        this.requests.push(Date.now());
+        next.resolve();
+      }
+    }
+  }
+
+  async acquireToken(): Promise<void> {
+    this.cleanup();
+
+    if (this.requests.length < this.config.requestsPerWindow) {
+      this.requests.push(Date.now());
+      return;
+    }
+
+    try {
+      await this.waitForSlot();
+    } catch (error) {
+      throw new Error(`Rate limit exceeded: ${error.message}`);
+    }
+  }
+
+  releaseToken() {
+    this.cleanup();
+    this.processWaiting();
+  }
+}
 
 
 # Filename: ./lib/shopify/index.ts

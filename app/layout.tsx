@@ -39,12 +39,11 @@ export const metadata = {
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const cartId = (await cookies()).get('cartId')?.value;
-  // Don't await the fetch, pass the Promise to the context provider
   const cart = getCart(cartId);
 
   return (
     <html lang="en" className={GeistSans.variable}>
-      <body className="bg-neutral-50 text-black selection:bg-teal-300 dark:bg-neutral-900 dark:text-white dark:selection:bg-pink-500 dark:selection:text-white">
+      <body className="bg-primary-gray text-primary-dark selection:bg-primary selection:text-primary-white dark:bg-primary-dark dark:text-primary-gray dark:selection:bg-primary-light dark:selection:text-primary-dark transition-colors duration-300">
         <CartProvider cartPromise={cart}>
           <Navbar />
           <main>
@@ -56,7 +55,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             >
               {children}
             </Providers>
-            <Toaster closeButton />
+            <Toaster
+              closeButton
+              theme="system"
+              toastOptions={{
+                className:
+                  '!bg-primary-gray !text-primary-dark dark:!bg-primary-dark dark:!text-primary-gray',
+                style: {
+                  border: '1px solid var(--primary-default)'
+                }
+              }}
+            />
             <WelcomeToast />
           </main>
         </CartProvider>

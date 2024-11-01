@@ -1,5 +1,3 @@
-// tailwind.config.ts
-
 import type { Config } from 'tailwindcss';
 import plugin from 'tailwindcss/plugin';
 
@@ -8,6 +6,16 @@ const config: Config = {
   darkMode: 'class',
   theme: {
     extend: {
+      colors: {
+        // Modern Emerald Theme
+        primary: {
+          DEFAULT: '#3DA35D', // Emerald Green
+          light: '#6DCB73', // Leaf Green
+          dark: '#333333', // Dark Charcoal
+          gray: '#E5E5E5', // Soft Gray
+          white: '#FFFFFF' // White
+        }
+      },
       fontFamily: {
         sans: ['var(--font-geist-sans)']
       },
@@ -135,20 +143,20 @@ const config: Config = {
         }
       );
     }),
-    // Glass morphism utilities
+    // Glass morphism utilities with Modern Emerald theme
     plugin(({ addUtilities }) => {
       addUtilities({
         '.glass': {
-          '@apply bg-white/[.05] backdrop-blur-[2px] backdrop-saturate-[1.8]': {}
+          '@apply bg-primary-white/[.05] backdrop-blur-[2px] backdrop-saturate-[1.8]': {}
         },
         '.glass-light': {
-          '@apply bg-white/[.5] backdrop-blur-[2px] backdrop-saturate-[1.8]': {}
+          '@apply bg-primary-white/[.5] backdrop-blur-[2px] backdrop-saturate-[1.8]': {}
         },
         '.glass-dark': {
-          '@apply bg-black/[.5] backdrop-blur-[2px] backdrop-saturate-[1.8]': {}
+          '@apply bg-primary-dark/[.5] backdrop-blur-[2px] backdrop-saturate-[1.8]': {}
         },
         '.border-glass': {
-          '@apply border border-white/[.05]': {}
+          '@apply border border-primary-white/[.05]': {}
         }
       });
     }),
@@ -163,7 +171,7 @@ const config: Config = {
         }
       });
     }),
-    // Mask utilities
+    // Mask utilities with Modern Emerald theme gradients
     plugin(({ addUtilities }) => {
       addUtilities({
         '.mask-fade-out': {
