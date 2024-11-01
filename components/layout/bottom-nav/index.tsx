@@ -3,7 +3,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Home, LayoutGrid, ShoppingCart, Sparkles, User, Zap } from 'lucide-react';
+import { Home, LayoutGrid, Sparkles, User, Zap } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { TabItem } from './tab-item';
 import type { TabItem as TabItemType } from './types';
@@ -23,12 +23,7 @@ const tabs: TabItemType[] = [
     name: 'SocioPe',
     href: '/sociope',
     icon: Sparkles,
-    isDisabled: true
-  },
-  {
-    name: 'Cart',
-    href: '/cart',
-    icon: ShoppingCart
+    isDisabled: false
   },
   {
     name: 'Account',

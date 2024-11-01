@@ -1,21 +1,20 @@
-// File: /lib/shopify/rate-limiter/advanced-limiter.ts
+// File: lib/shopify/rate-limiter/advanced-limiter.ts
 
-import { RateLimitConfig, rateLimitConfigs, RateLimitMode } from './types';
+import { RATE_LIMIT_CONFIG } from './config'; // Fixed import path
 
 export class AdvancedRateLimiter {
   private requests: number[] = [];
-  private config: RateLimitConfig;
   private queue: Array<{
     resolve: () => void;
     reject: (err: Error) => void;
     priority: number;
+    timestamp: number;
   }> = [];
   private processing: boolean = false;
+  private config;
 
-  constructor() {
-    const mode: RateLimitMode =
-      process.env.NODE_ENV === 'development' ? 'development' : 'production';
-    this.config = rateLimitConfigs[mode];
+  constructor(configType?: keyof typeof RATE_LIMIT_CONFIG) {
+    this.config = RATE_LIMIT_CONFIG[configType || 'default'];
   }
 
   private cleanup() {
@@ -54,6 +53,7 @@ export class AdvancedRateLimiter {
     }
 
     return new Promise((resolve, reject) => {
+      const now = Date.now();
       const timeout = setTimeout(() => {
         const index = this.queue.findIndex((item) => item.resolve === resolve);
         if (index !== -1) {
@@ -71,7 +71,8 @@ export class AdvancedRateLimiter {
           clearTimeout(timeout);
           reject(err);
         },
-        priority
+        priority,
+        timestamp: now // Added timestamp
       });
 
       this.queue.sort((a, b) => b.priority - a.priority);
@@ -81,5 +82,14 @@ export class AdvancedRateLimiter {
 
   releaseToken() {
     setTimeout(() => this.processQueue(), 0);
+  }
+
+  getMetrics() {
+    return {
+      queueLength: this.queue.length,
+      currentRequests: this.requests.length,
+      isProcessing: this.processing,
+      config: this.config
+    };
   }
 }

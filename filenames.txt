@@ -26,6 +26,9 @@
 ./components/prose.tsx
 ./components/logo-square.tsx
 ./components/opengraph-image.tsx
+./components/layout/bottom-nav/tab-item.tsx
+./components/layout/bottom-nav/index.tsx
+./components/layout/bottom-nav/types.ts
 ./components/layout/navbar/mobile-menu.tsx
 ./components/layout/navbar/index.tsx
 ./components/layout/navbar/search.tsx
@@ -92,8 +95,8 @@
 ./lib/shopify/queries/cart.ts
 ./lib/shopify/retry.ts
 ./lib/shopify/types.ts
-./lib/shopify/rate-limiter.ts
 ./lib/shopify/rate-limiter/types.ts
+./lib/shopify/rate-limiter/index.ts
 ./lib/shopify/rate-limiter/config.ts
 ./lib/shopify/rate-limiter/advanced-limiter.ts
 ./lib/shopify/index.ts

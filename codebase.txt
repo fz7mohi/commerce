@@ -609,6 +609,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 # Path: /Users/admin/gp/commerce/./app/layout.tsx
 
 import { CartProvider } from 'components/cart/cart-context';
+import { BottomNav } from 'components/layout/bottom-nav'; // Add this import
 import { Navbar } from 'components/layout/navbar';
 import { Providers } from 'components/providers/providers';
 import { WelcomeToast } from 'components/welcome-toast';
@@ -653,10 +654,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 
   return (
     <html lang="en" className={GeistSans.variable}>
-      <body className="bg-primary-gray text-primary-dark selection:bg-primary selection:text-primary-white dark:bg-primary-dark dark:text-primary-gray dark:selection:bg-primary-light dark:selection:text-primary-dark transition-colors duration-300">
+      <body className="bg-primary-gray text-primary-dark transition-colors duration-300 selection:bg-primary selection:text-primary-white dark:bg-primary-dark dark:text-primary-gray dark:selection:bg-primary-light dark:selection:text-primary-dark">
         <CartProvider cartPromise={cart}>
           <Navbar />
-          <main>
+          <main className="pb-16 md:pb-0">
+            {' '}
+            {/* Add padding bottom for mobile */}
             <Providers
               attribute="class"
               defaultTheme="system"
@@ -678,6 +681,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             />
             <WelcomeToast />
           </main>
+          <BottomNav /> {/* Add the BottomNav component */}
         </CartProvider>
       </body>
     </html>
@@ -1217,6 +1221,181 @@ export default async function OpengraphImage(props?: Props): Promise<ImageRespon
       ]
     }
   );
+}
+
+
+# Filename: ./components/layout/bottom-nav/tab-item.tsx
+# Path: /Users/admin/gp/commerce/./components/layout/bottom-nav/tab-item.tsx
+
+// File: components/layout/bottom-nav/tab-item.tsx
+
+import clsx from 'clsx';
+import { motion } from 'framer-motion';
+import { LucideIcon } from 'lucide-react';
+import Link from 'next/link';
+
+interface TabItemProps {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  isActive: boolean;
+  badge?: number;
+  isDisabled?: boolean;
+}
+
+const MotionDiv = motion.div;
+
+export function TabItem({ href, icon: Icon, label, isActive, badge, isDisabled }: TabItemProps) {
+  const content = (
+    <div className="flex flex-col items-center justify-center">
+      <div className="relative">
+        <Icon
+          className={clsx(
+            'h-6 w-6',
+            isActive
+              ? 'text-primary dark:text-primary-light'
+              : 'text-primary-dark/60 dark:text-primary-gray/60'
+          )}
+        />
+        {badge ? (
+          <span className="absolute -right-2 -top-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-medium text-white">
+            {badge}
+          </span>
+        ) : null}
+      </div>
+      <span
+        className={clsx(
+          'mt-1 text-[10px]',
+          isActive
+            ? 'font-medium text-primary dark:text-primary-light'
+            : 'text-primary-dark/60 dark:text-primary-gray/60'
+        )}
+      >
+        {label}
+      </span>
+      {isActive && (
+        <MotionDiv
+          layoutId="bottomNavIndicator"
+          className="absolute -top-[2px] h-1 w-12 rounded-full bg-primary dark:bg-primary-light"
+          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+        />
+      )}
+    </div>
+  );
+
+  if (isDisabled) {
+    return (
+      <div className="relative flex flex-1 cursor-not-allowed items-center justify-center py-2 opacity-50">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      href={href}
+      className="relative flex flex-1 items-center justify-center py-2 active:opacity-70"
+    >
+      {content}
+    </Link>
+  );
+}
+
+
+# Filename: ./components/layout/bottom-nav/index.tsx
+# Path: /Users/admin/gp/commerce/./components/layout/bottom-nav/index.tsx
+
+// File: components/layout/bottom-nav/index.tsx
+
+'use client';
+
+import { motion } from 'framer-motion';
+import { Home, LayoutGrid, Sparkles, User, Zap } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { TabItem } from './tab-item';
+import type { TabItem as TabItemType } from './types';
+
+const tabs: TabItemType[] = [
+  {
+    name: 'Home',
+    href: '/',
+    icon: Home
+  },
+  {
+    name: 'Categories',
+    href: '/search',
+    icon: LayoutGrid
+  },
+  {
+    name: 'SocioPe',
+    href: '/sociope',
+    icon: Sparkles,
+    isDisabled: false
+  },
+  {
+    name: 'Account',
+    href: '/account',
+    icon: User
+  },
+  {
+    name: 'AiPe',
+    href: '/aipe',
+    icon: Zap,
+    isDisabled: true
+  }
+];
+
+const MotionDiv = motion.div;
+
+export function BottomNav() {
+  const pathname = usePathname();
+
+  return (
+    <MotionDiv
+      initial={{ y: 100 }}
+      animate={{ y: 0 }}
+      style={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        zIndex: 50,
+        marginLeft: '-1rem',
+        marginRight: '-1rem',
+        backdropFilter: 'blur(228px)'
+      }}
+      className="border-t border-neutral-200 bg-primary-gray/90 pb-[env(safe-area-inset-bottom)] dark:border-neutral-800 dark:bg-primary-dark/90 md:hidden"
+    >
+      <nav className="flex h-16">
+        {tabs.map((tab) => (
+          <TabItem
+            key={tab.name}
+            href={tab.href}
+            icon={tab.icon}
+            label={tab.name}
+            isActive={pathname === tab.href}
+            isDisabled={tab.isDisabled}
+          />
+        ))}
+      </nav>
+    </MotionDiv>
+  );
+}
+
+
+# Filename: ./components/layout/bottom-nav/types.ts
+# Path: /Users/admin/gp/commerce/./components/layout/bottom-nav/types.ts
+
+// File: components/layout/bottom-nav/types.ts
+
+import { LucideIcon } from 'lucide-react';
+
+export interface TabItem {
+  name: string;
+  href: string;
+  icon: LucideIcon;
+  badge?: number;
+  isDisabled?: boolean;
 }
 
 
@@ -2320,7 +2499,7 @@ export default function LogoIconhorizontal(props: React.ComponentProps<'svg'>) {
       aria-label={`${process.env.SITE_NAME} logo`}
       viewBox="0 0 798.11 213.14"
       {...props}
-      className={clsx('h-auto w-full', props.className)}
+      className={clsx('h-24 w-full', props.className)}
     >
       {/* Leaf sections */}
       <path
@@ -5406,31 +5585,6 @@ export type ShopifyProductsOperation = {
 };
 
 
-# Filename: ./lib/shopify/rate-limiter.ts
-# Path: /Users/admin/gp/commerce/./lib/shopify/rate-limiter.ts
-
-// File: /lib/shopify/rate-limiter.ts
-
-export const RATE_LIMIT_REQUESTS = 50; // Adjust based on your Shopify plan
-export const RATE_LIMIT_WINDOW = 60000; // 1 minute in milliseconds
-
-export class RateLimiter {
-  private requests: number[] = [];
-
-  canMakeRequest(): boolean {
-    const now = Date.now();
-    this.requests = this.requests.filter((time) => now - time < RATE_LIMIT_WINDOW);
-    return this.requests.length < RATE_LIMIT_REQUESTS;
-  }
-
-  addRequest(): void {
-    this.requests.push(Date.now());
-  }
-}
-
-export const globalRateLimiter = new RateLimiter();
-
-
 # Filename: ./lib/shopify/rate-limiter/types.ts
 # Path: /Users/admin/gp/commerce/./lib/shopify/rate-limiter/types.ts
 
@@ -5461,50 +5615,65 @@ export const rateLimitConfigs: Record<RateLimitMode, RateLimitConfig> = {
 };
 
 
+# Filename: ./lib/shopify/rate-limiter/index.ts
+# Path: /Users/admin/gp/commerce/./lib/shopify/rate-limiter/index.ts
+
+// File: lib/shopify/rate-limiter/index.ts
+
+export { AdvancedRateLimiter } from './advanced-limiter';
+export { RATE_LIMIT_CONFIG } from './config';
+export type { RateLimitConfig, RateLimitMode } from './types';
+
+
 # Filename: ./lib/shopify/rate-limiter/config.ts
 # Path: /Users/admin/gp/commerce/./lib/shopify/rate-limiter/config.ts
 
-// File: /lib/shopify/rate-limiter/config.ts
+// File: lib/shopify/rate-limiter/config.ts
 
-import { RateLimitConfig } from './types';
-
-export const rateLimitConfigs: Record<string, RateLimitConfig> = {
-  development: {
-    requestsPerWindow: 100,
-    windowMs: 1000,
-    maxWaitingTime: 10000,
-    queueTimeout: 15000
-  },
-  production: {
-    requestsPerWindow: 50,
+export const RATE_LIMIT_CONFIG = {
+  default: {
+    requestsPerWindow: 60,
     windowMs: 60000,
     maxWaitingTime: 5000,
     queueTimeout: 10000
+  },
+  aggressive: {
+    requestsPerWindow: 30,
+    windowMs: 60000,
+    maxWaitingTime: 8000,
+    queueTimeout: 15000
+  },
+  relaxed: {
+    requestsPerWindow: 120,
+    windowMs: 60000,
+    maxWaitingTime: 3000,
+    queueTimeout: 8000
   }
-};
+} as const;
+
+export type RateLimitConfigKey = keyof typeof RATE_LIMIT_CONFIG;
 
 
 # Filename: ./lib/shopify/rate-limiter/advanced-limiter.ts
 # Path: /Users/admin/gp/commerce/./lib/shopify/rate-limiter/advanced-limiter.ts
 
-// File: /lib/shopify/rate-limiter/advanced-limiter.ts
+// File: lib/shopify/rate-limiter/advanced-limiter.ts
 
-import { RateLimitConfig, rateLimitConfigs, RateLimitMode } from './types';
+import { RATE_LIMIT_CONFIG } from './config'; // Fixed import path
 
 export class AdvancedRateLimiter {
   private requests: number[] = [];
-  private config: RateLimitConfig;
   private queue: Array<{
     resolve: () => void;
     reject: (err: Error) => void;
     priority: number;
+    timestamp: number;
   }> = [];
   private processing: boolean = false;
+  private config;
 
-  constructor() {
-    const mode: RateLimitMode =
-      process.env.NODE_ENV === 'development' ? 'development' : 'production';
-    this.config = rateLimitConfigs[mode];
+  constructor(configType?: keyof typeof RATE_LIMIT_CONFIG) {
+    this.config = RATE_LIMIT_CONFIG[configType || 'default'];
   }
 
   private cleanup() {
@@ -5543,6 +5712,7 @@ export class AdvancedRateLimiter {
     }
 
     return new Promise((resolve, reject) => {
+      const now = Date.now();
       const timeout = setTimeout(() => {
         const index = this.queue.findIndex((item) => item.resolve === resolve);
         if (index !== -1) {
@@ -5560,7 +5730,8 @@ export class AdvancedRateLimiter {
           clearTimeout(timeout);
           reject(err);
         },
-        priority
+        priority,
+        timestamp: now // Added timestamp
       });
 
       this.queue.sort((a, b) => b.priority - a.priority);
@@ -5571,17 +5742,29 @@ export class AdvancedRateLimiter {
   releaseToken() {
     setTimeout(() => this.processQueue(), 0);
   }
+
+  getMetrics() {
+    return {
+      queueLength: this.queue.length,
+      currentRequests: this.requests.length,
+      isProcessing: this.processing,
+      config: this.config
+    };
+  }
 }
 
 
 # Filename: ./lib/shopify/index.ts
 # Path: /Users/admin/gp/commerce/./lib/shopify/index.ts
 
+// File: lib/shopify/index.ts
+
 import { HIDDEN_PRODUCT_TAG, SHOPIFY_GRAPHQL_API_ENDPOINT, TAGS } from 'lib/constants';
 import { ensureStartsWith } from 'lib/utils';
 import { revalidateTag } from 'next/cache';
 import { headers } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
+import { ShopifyAPIError } from './errors';
 import {
   addToCartMutation,
   createCartMutation,
@@ -5601,6 +5784,9 @@ import {
   getProductRecommendationsQuery,
   getProductsQuery
 } from './queries/product';
+import { AdvancedRateLimiter } from './rate-limiter/advanced-limiter';
+import { RATE_LIMIT_CONFIG } from './rate-limiter/config';
+import { DEFAULT_RETRY_OPTIONS, withRetry } from './retry';
 import {
   Cart,
   Collection,
@@ -5628,10 +5814,6 @@ import {
   ShopifyUpdateCartOperation
 } from './types';
 
-import { ShopifyAPIError } from './errors';
-import { globalRateLimiter } from './rate-limiter';
-import { DEFAULT_RETRY_OPTIONS, withRetry } from './retry';
-
 const domain = process.env.SHOPIFY_STORE_DOMAIN
   ? ensureStartsWith(process.env.SHOPIFY_STORE_DOMAIN, 'https://')
   : '';
@@ -5639,6 +5821,11 @@ const endpoint = `${domain}${SHOPIFY_GRAPHQL_API_ENDPOINT}`;
 const key = process.env.SHOPIFY_STOREFRONT_ACCESS_TOKEN!;
 
 type ExtractVariables<T> = T extends { variables: object } ? T['variables'] : never;
+
+// Initialize rate limiter with configuration from environment
+const configType =
+  (process.env.SHOPIFY_RATE_LIMIT_CONFIG as keyof typeof RATE_LIMIT_CONFIG) || 'default';
+const rateLimiter = new AdvancedRateLimiter(configType);
 
 export async function shopifyFetch<T>({
   cache = 'force-cache',
@@ -5653,13 +5840,9 @@ export async function shopifyFetch<T>({
   tags?: string[];
   variables?: ExtractVariables<T>;
 }): Promise<{ status: number; body: T }> {
-  if (!globalRateLimiter.canMakeRequest()) {
-    throw new ShopifyAPIError('Rate limit exceeded', 'RATE_LIMIT_EXCEEDED', 429, 'Rate Limiter');
-  }
-
-  globalRateLimiter.addRequest();
-
   try {
+    await rateLimiter.acquireToken();
+
     const result = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -5678,10 +5861,9 @@ export async function shopifyFetch<T>({
     const body = await result.json();
 
     if (body.errors) {
-      const firstError = body.errors[0];
       throw new ShopifyAPIError(
-        firstError.message,
-        firstError.code || 'UNKNOWN_ERROR',
+        body.errors[0].message,
+        body.errors[0].code || 'UNKNOWN_ERROR',
         result.status,
         'Shopify API'
       );
@@ -5710,6 +5892,8 @@ export async function shopifyFetch<T>({
     }
 
     throw new ShopifyAPIError('An unknown error occurred', 'UNKNOWN_ERROR', 500, 'Shopify API');
+  } finally {
+    rateLimiter.releaseToken();
   }
 }
 
@@ -6198,8 +6382,6 @@ export type { RetryOptions } from './retry';
 export type { ShopifyAPIError, ShopifyError, ShopifyErrorResponse } from './errors';
 
 export { DEFAULT_RETRY_OPTIONS, withRetry } from './retry';
-
-export { globalRateLimiter } from './rate-limiter';
 
 // Export webhook types for better type safety
 export const WebhookTopics = {

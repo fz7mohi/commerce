@@ -1,8 +1,11 @@
+// File: lib/shopify/index.ts
+
 import { HIDDEN_PRODUCT_TAG, SHOPIFY_GRAPHQL_API_ENDPOINT, TAGS } from 'lib/constants';
 import { ensureStartsWith } from 'lib/utils';
 import { revalidateTag } from 'next/cache';
 import { headers } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
+import { ShopifyAPIError } from './errors';
 import {
   addToCartMutation,
   createCartMutation,
@@ -22,6 +25,9 @@ import {
   getProductRecommendationsQuery,
   getProductsQuery
 } from './queries/product';
+import { AdvancedRateLimiter } from './rate-limiter/advanced-limiter';
+import { RATE_LIMIT_CONFIG } from './rate-limiter/config';
+import { DEFAULT_RETRY_OPTIONS, withRetry } from './retry';
 import {
   Cart,
   Collection,
@@ -49,10 +55,6 @@ import {
   ShopifyUpdateCartOperation
 } from './types';
 
-import { ShopifyAPIError } from './errors';
-import { globalRateLimiter } from './rate-limiter';
-import { DEFAULT_RETRY_OPTIONS, withRetry } from './retry';
-
 const domain = process.env.SHOPIFY_STORE_DOMAIN
   ? ensureStartsWith(process.env.SHOPIFY_STORE_DOMAIN, 'https://')
   : '';
@@ -60,6 +62,11 @@ const endpoint = `${domain}${SHOPIFY_GRAPHQL_API_ENDPOINT}`;
 const key = process.env.SHOPIFY_STOREFRONT_ACCESS_TOKEN!;
 
 type ExtractVariables<T> = T extends { variables: object } ? T['variables'] : never;
+
+// Initialize rate limiter with configuration from environment
+const configType =
+  (process.env.SHOPIFY_RATE_LIMIT_CONFIG as keyof typeof RATE_LIMIT_CONFIG) || 'default';
+const rateLimiter = new AdvancedRateLimiter(configType);
 
 export async function shopifyFetch<T>({
   cache = 'force-cache',
@@ -74,13 +81,9 @@ export async function shopifyFetch<T>({
   tags?: string[];
   variables?: ExtractVariables<T>;
 }): Promise<{ status: number; body: T }> {
-  if (!globalRateLimiter.canMakeRequest()) {
-    throw new ShopifyAPIError('Rate limit exceeded', 'RATE_LIMIT_EXCEEDED', 429, 'Rate Limiter');
-  }
-
-  globalRateLimiter.addRequest();
-
   try {
+    await rateLimiter.acquireToken();
+
     const result = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -99,10 +102,9 @@ export async function shopifyFetch<T>({
     const body = await result.json();
 
     if (body.errors) {
-      const firstError = body.errors[0];
       throw new ShopifyAPIError(
-        firstError.message,
-        firstError.code || 'UNKNOWN_ERROR',
+        body.errors[0].message,
+        body.errors[0].code || 'UNKNOWN_ERROR',
         result.status,
         'Shopify API'
       );
@@ -131,6 +133,8 @@ export async function shopifyFetch<T>({
     }
 
     throw new ShopifyAPIError('An unknown error occurred', 'UNKNOWN_ERROR', 500, 'Shopify API');
+  } finally {
+    rateLimiter.releaseToken();
   }
 }
 
@@ -619,8 +623,6 @@ export type { RetryOptions } from './retry';
 export type { ShopifyAPIError, ShopifyError, ShopifyErrorResponse } from './errors';
 
 export { DEFAULT_RETRY_OPTIONS, withRetry } from './retry';
-
-export { globalRateLimiter } from './rate-limiter';
 
 // Export webhook types for better type safety
 export const WebhookTopics = {

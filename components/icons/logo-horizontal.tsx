@@ -7,7 +7,7 @@ export default function LogoIconhorizontal(props: React.ComponentProps<'svg'>) {
       aria-label={`${process.env.SITE_NAME} logo`}
       viewBox="0 0 798.11 213.14"
       {...props}
-      className={clsx('h-auto w-full', props.className)}
+      className={clsx('h-24 w-full', props.className)}
     >
       {/* Leaf sections */}
       <path
