@@ -1,5 +1,8 @@
+// File: app/layout.tsx
+import { AuthProvider } from '@/components/providers/auth-provider';
+import { NextUIClientProvider } from '@/components/providers/nextui-provider';
 import { CartProvider } from 'components/cart/cart-context';
-import { BottomNav } from 'components/layout/bottom-nav'; // Add this import
+import { BottomNav } from 'components/layout/bottom-nav';
 import { Navbar } from 'components/layout/navbar';
 import { Providers } from 'components/providers/providers';
 import { WelcomeToast } from 'components/welcome-toast';
@@ -45,34 +48,34 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="en" className={GeistSans.variable}>
       <body className="bg-primary-gray text-primary-dark transition-colors duration-300 selection:bg-primary selection:text-primary-white dark:bg-primary-dark dark:text-primary-gray dark:selection:bg-primary-light dark:selection:text-primary-dark">
-        <CartProvider cartPromise={cart}>
-          <Navbar />
-          <main className="pb-16 md:pb-0">
-            {' '}
-            {/* Add padding bottom for mobile */}
-            <Providers
-              attribute="class"
-              defaultTheme="system"
-              enableSystem
-              disableTransitionOnChange
-            >
-              {children}
-            </Providers>
-            <Toaster
-              closeButton
-              theme="system"
-              toastOptions={{
-                className:
-                  '!bg-primary-gray !text-primary-dark dark:!bg-primary-dark dark:!text-primary-gray',
-                style: {
-                  border: '1px solid var(--primary-default)'
-                }
-              }}
-            />
-            <WelcomeToast />
-          </main>
-          <BottomNav /> {/* Add the BottomNav component */}
-        </CartProvider>
+        <NextUIClientProvider>
+          <AuthProvider>
+            <CartProvider cartPromise={cart}>
+              <Providers
+                attribute="class"
+                defaultTheme="system"
+                enableSystem
+                disableTransitionOnChange
+              >
+                <Navbar />
+                <main className="pb-16 md:pb-0">{children}</main>
+                <BottomNav />
+                <Toaster
+                  closeButton
+                  theme="system"
+                  toastOptions={{
+                    className:
+                      '!bg-primary-gray !text-primary-dark dark:!bg-primary-dark dark:!text-primary-gray',
+                    style: {
+                      border: '1px solid var(--primary-default)'
+                    }
+                  }}
+                />
+                <WelcomeToast />
+              </Providers>
+            </CartProvider>
+          </AuthProvider>
+        </NextUIClientProvider>
       </body>
     </html>
   );

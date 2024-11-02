@@ -1,8 +1,8 @@
 // prisma/schema.prisma
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -42,6 +42,7 @@ model User {
   email         String    @unique
   emailVerified DateTime?
   image         String?
+  shopifyCustomerId String?  @unique
   password      String?
   role          String    @default("USER")
   loginAttempts Int       @default(0)
@@ -52,7 +53,16 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  @@index([email])
+  // SocioPe relations
+  socialPosts     SocialPost[]
+  likes           Like[]
+  comments        Comment[]
+  reportsFiled    SociopeReport[] @relation("ReporterRelation")
+  reportsResolved SociopeReport[] @relation("AdminRelation")
+
+  // Follow relations
+  followers Follow[] @relation("Following")
+  following Follow[] @relation("Followers")
 }
 
 model VerificationToken {
@@ -61,4 +71,115 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+// SocioPe Enums
+enum ReportType {
+  POST
+  COMMENT
+  USER
+}
+
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
+enum PostVisibility {
+  PUBLIC
+  FOLLOWERS
+  PRIVATE
+}
+
+// SocioPe Models
+model SocialPost {
+  id         String         @id @default(cuid())
+  userId     String
+  user       User           @relation(fields: [userId], references: [id])
+  content    String
+  images     String[]
+  products   String[]
+  visibility PostVisibility @default(PUBLIC)
+  likes      Like[]
+  comments   Comment[]
+  tags       String[]
+  views      Int            @default(0)
+  shareCount Int            @default(0)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([tags])
+}
+
+model Like {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id])
+  postId    String
+  post      SocialPost @relation(fields: [postId], references: [id])
+  createdAt DateTime   @default(now())
+
+  @@unique([userId, postId])
+  @@index([userId])
+  @@index([postId])
+}
+
+model Comment {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id])
+  postId    String
+  post      SocialPost @relation(fields: [postId], references: [id])
+  content   String
+  parentId  String?
+  parent    Comment?   @relation("CommentReplies", fields: [parentId], references: [id])
+  replies   Comment[]  @relation("CommentReplies")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([postId])
+  @@index([parentId])
+}
+
+model SociopeReport {
+  id         String       @id @default(cuid())
+  type       ReportType
+  targetId   String
+  reporterId String
+  reporter   User         @relation("ReporterRelation", fields: [reporterId], references: [id])
+  status     ReportStatus @default(PENDING)
+  adminNotes String?
+  resolvedBy String?
+  admin      User?        @relation("AdminRelation", fields: [resolvedBy], references: [id])
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([reporterId])
+  @@index([status])
+}
+
+model SociopeSettings {
+  id              String   @id @default(cuid())
+  autoModKeywords String[]
+  userPostLimit   Int      @default(10)
+  imageRequired   Boolean  @default(false)
+  productRequired Boolean  @default(false)
+  updatedAt       DateTime @updatedAt
+}
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  follower    User     @relation("Followers", fields: [followerId], references: [id])
+  following   User     @relation("Following", fields: [followingId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
 }

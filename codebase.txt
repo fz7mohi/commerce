@@ -48,11 +48,70 @@ export const config = {
 };
 
 
+# Filename: ./types/sociope.ts
+# Path: /Users/admin/gp/commerce/./types/sociope.ts
+
+// Define shared types for SocioPe features
+
+export type SocialPost = {
+  id: string;
+  userId: string;
+  user: {
+    id: string;
+    name: string;
+    image?: string;
+  };
+  content: string;
+  images: string[];
+  products: string[];
+  likes: Like[];
+  comments: Comment[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type Like = {
+  id: string;
+  userId: string;
+  postId: string;
+  createdAt: Date;
+};
+
+export type Comment = {
+  id: string;
+  userId: string;
+  postId: string;
+  content: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type SociopeReport = {
+  id: string;
+  type: 'POST' | 'COMMENT' | 'USER';
+  targetId: string;
+  reporterId: string;
+  status: 'PENDING' | 'RESOLVED' | 'DISMISSED';
+  adminNotes?: string;
+  resolvedBy?: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type SociopeSettings = {
+  id: string;
+  autoModKeywords: string[];
+  userPostLimit: number;
+  imageRequired: boolean;
+  productRequired: boolean;
+  updatedAt: Date;
+};
+
+
 # Filename: ./types/next-auth.d.ts
 # Path: /Users/admin/gp/commerce/./types/next-auth.d.ts
 
-// ./types/next-auth.d.ts
-
+// types/next-auth.d.ts
 import type { DefaultSession } from 'next-auth';
 
 export type UserRole = 'ADMIN' | 'USER';
@@ -62,11 +121,13 @@ declare module 'next-auth' {
     user: {
       id: string;
       role: UserRole;
+      shopifyCustomerId?: string;
     } & DefaultSession['user'];
   }
 
   interface User {
     role: UserRole;
+    shopifyCustomerId?: string;
   }
 }
 
@@ -74,6 +135,17 @@ declare module 'next-auth/jwt' {
   interface JWT {
     id: string;
     role: UserRole;
+    shopifyCustomerId?: string;
+  }
+}
+
+
+# Filename: ./types/environment.d.ts
+# Path: /Users/admin/gp/commerce/./types/environment.d.ts
+
+namespace NodeJS {
+  interface Global {
+    prisma: any;
   }
 }
 
@@ -95,6 +167,107 @@ export default function robots() {
     sitemap: `${baseUrl}/sitemap.xml`,
     host: baseUrl
   };
+}
+
+
+# Filename: ./app/sociope/page.tsx
+# Path: /Users/admin/gp/commerce/./app/sociope/page.tsx
+
+import SocialFeed from '@/components/sociope/feed';
+
+export default function SociopePage() {
+  return <SocialFeed />;
+}
+
+
+# Filename: ./app/test/page.tsx
+# Path: /Users/admin/gp/commerce/./app/test/page.tsx
+
+'use client';
+
+import { Icon } from '@iconify/react';
+import { Button, Checkbox, Divider, Input, Link } from '@nextui-org/react';
+import React from 'react';
+
+export default function Component() {
+  const [isVisible, setIsVisible] = React.useState(false);
+
+  const toggleVisibility = () => setIsVisible(!isVisible);
+
+  return (
+    <div className="flex h-full w-full items-center justify-center">
+      <div className="rounded-large bg-content1 shadow-small flex w-full max-w-sm flex-col gap-4 px-8 pb-10 pt-6">
+        <p className="pb-2 text-xl font-medium">Log In</p>
+        <form className="flex flex-col gap-3" onSubmit={(e) => e.preventDefault()}>
+          <Input
+            label="Email Address"
+            name="email"
+            placeholder="Enter your email"
+            type="email"
+            variant="bordered"
+          />
+          <Input
+            endContent={
+              <button type="button" onClick={toggleVisibility}>
+                {isVisible ? (
+                  <Icon
+                    className="text-default-400 pointer-events-none text-2xl"
+                    icon="solar:eye-closed-linear"
+                  />
+                ) : (
+                  <Icon
+                    className="text-default-400 pointer-events-none text-2xl"
+                    icon="solar:eye-bold"
+                  />
+                )}
+              </button>
+            }
+            label="Password"
+            name="password"
+            placeholder="Enter your password"
+            type={isVisible ? 'text' : 'password'}
+            variant="bordered"
+          />
+          <div className="flex items-center justify-between px-1 py-2">
+            <Checkbox name="remember" size="sm">
+              Remember me
+            </Checkbox>
+            <Link className="text-default-500" href="#" size="sm">
+              Forgot password?
+            </Link>
+          </div>
+          <Button color="primary" type="submit">
+            Log In
+          </Button>
+        </form>
+        <div className="flex items-center gap-4 py-2">
+          <Divider className="flex-1" />
+          <p className="text-tiny text-default-500 shrink-0">OR</p>
+          <Divider className="flex-1" />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Button
+            startContent={<Icon icon="flat-color-icons:google" width={24} />}
+            variant="bordered"
+          >
+            Continue with Google
+          </Button>
+          <Button
+            startContent={<Icon className="text-default-500" icon="fe:github" width={24} />}
+            variant="bordered"
+          >
+            Continue with Github
+          </Button>
+        </div>
+        <p className="text-small text-center">
+          Need to create an account?&nbsp;
+          <Link href="#" size="sm">
+            Sign Up
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
 }
 
 
@@ -608,8 +781,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 # Filename: ./app/layout.tsx
 # Path: /Users/admin/gp/commerce/./app/layout.tsx
 
+// File: app/layout.tsx
+import { AuthProvider } from '@/components/providers/auth-provider';
+import { NextUIClientProvider } from '@/components/providers/nextui-provider';
 import { CartProvider } from 'components/cart/cart-context';
-import { BottomNav } from 'components/layout/bottom-nav'; // Add this import
+import { BottomNav } from 'components/layout/bottom-nav';
 import { Navbar } from 'components/layout/navbar';
 import { Providers } from 'components/providers/providers';
 import { WelcomeToast } from 'components/welcome-toast';
@@ -655,34 +831,34 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="en" className={GeistSans.variable}>
       <body className="bg-primary-gray text-primary-dark transition-colors duration-300 selection:bg-primary selection:text-primary-white dark:bg-primary-dark dark:text-primary-gray dark:selection:bg-primary-light dark:selection:text-primary-dark">
-        <CartProvider cartPromise={cart}>
-          <Navbar />
-          <main className="pb-16 md:pb-0">
-            {' '}
-            {/* Add padding bottom for mobile */}
-            <Providers
-              attribute="class"
-              defaultTheme="system"
-              enableSystem
-              disableTransitionOnChange
-            >
-              {children}
-            </Providers>
-            <Toaster
-              closeButton
-              theme="system"
-              toastOptions={{
-                className:
-                  '!bg-primary-gray !text-primary-dark dark:!bg-primary-dark dark:!text-primary-gray',
-                style: {
-                  border: '1px solid var(--primary-default)'
-                }
-              }}
-            />
-            <WelcomeToast />
-          </main>
-          <BottomNav /> {/* Add the BottomNav component */}
-        </CartProvider>
+        <NextUIClientProvider>
+          <AuthProvider>
+            <CartProvider cartPromise={cart}>
+              <Providers
+                attribute="class"
+                defaultTheme="system"
+                enableSystem
+                disableTransitionOnChange
+              >
+                <Navbar />
+                <main className="pb-16 md:pb-0">{children}</main>
+                <BottomNav />
+                <Toaster
+                  closeButton
+                  theme="system"
+                  toastOptions={{
+                    className:
+                      '!bg-primary-gray !text-primary-dark dark:!bg-primary-dark dark:!text-primary-gray',
+                    style: {
+                      border: '1px solid var(--primary-default)'
+                    }
+                  }}
+                />
+                <WelcomeToast />
+              </Providers>
+            </CartProvider>
+          </AuthProvider>
+        </NextUIClientProvider>
       </body>
     </html>
   );
@@ -711,6 +887,462 @@ export default function Error({ reset }: { reset: () => void }) {
     </div>
   );
 }
+
+
+# Filename: ./app/api/sociope/comments/route.ts
+# Path: /Users/admin/gp/commerce/./app/api/sociope/comments/route.ts
+
+import { prisma } from '@/lib/prisma';
+import { getServerSession } from 'next-auth';
+import { NextResponse } from 'next/server';
+
+export async function POST(req: Request) {
+  try {
+    const session = await getServerSession();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { postId, content, parentId } = await req.json();
+
+    if (!content || content.trim().length === 0) {
+      return NextResponse.json({ error: 'Content is required' }, { status: 400 });
+    }
+
+    const comment = await prisma.comment.create({
+      data: {
+        userId: session.user.id,
+        postId,
+        content,
+        parentId
+      },
+      include: {
+        user: {
+          select: {
+            name: true,
+            image: true
+          }
+        }
+      }
+    });
+
+    return NextResponse.json(comment);
+  } catch (error) {
+    console.error('Error creating comment:', error);
+    return NextResponse.json({ error: 'Error creating comment' }, { status: 500 });
+  }
+}
+
+
+# Filename: ./app/api/sociope/posts/route.ts
+# Path: /Users/admin/gp/commerce/./app/api/sociope/posts/route.ts
+
+// File: app/api/sociope/posts/route.ts
+import { prisma } from '@/lib/prisma';
+import { getProducts } from '@/lib/shopify';
+import { getServerSession } from 'next-auth';
+import { NextResponse } from 'next/server';
+
+// Types
+interface CreatePostRequest {
+  content: string;
+  images: string[];
+  productIds: string[];
+}
+
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
+    const skip = (page - 1) * limit;
+
+    const posts = await prisma.socialPost.findMany({
+      take: limit,
+      skip,
+      orderBy: {
+        createdAt: 'desc'
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            image: true
+          }
+        },
+        likes: {
+          select: {
+            userId: true
+          }
+        },
+        comments: {
+          select: {
+            id: true,
+            content: true,
+            userId: true,
+            user: {
+              select: {
+                name: true,
+                image: true
+              }
+            },
+            createdAt: true
+          },
+          take: 3,
+          orderBy: {
+            createdAt: 'desc'
+          }
+        },
+        _count: {
+          select: {
+            likes: true,
+            comments: true
+          }
+        }
+      }
+    });
+
+    // Fetch product details for each post
+    const postsWithProducts = await Promise.all(
+      posts.map(async (post) => {
+        const products =
+          post.products.length > 0
+            ? await getProducts({
+                query: `id:${post.products.join(' OR id:')}`,
+                sortKey: 'RELEVANCE'
+              })
+            : [];
+
+        return {
+          ...post,
+          products
+        };
+      })
+    );
+
+    return NextResponse.json(postsWithProducts);
+  } catch (error) {
+    console.error('Error fetching posts:', error);
+    return NextResponse.json({ error: 'Error fetching posts' }, { status: 500 });
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const session = await getServerSession();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { content, images, productIds }: CreatePostRequest = await req.json();
+
+    // Validate input
+    if (!content || content.trim().length === 0) {
+      return NextResponse.json({ error: 'Content is required' }, { status: 400 });
+    }
+
+    // Create post
+    const post = await prisma.socialPost.create({
+      data: {
+        userId: session.user.id,
+        content,
+        images: images || [],
+        products: productIds || []
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            image: true
+          }
+        }
+      }
+    });
+
+    return NextResponse.json(post);
+  } catch (error) {
+    console.error('Error creating post:', error);
+    return NextResponse.json({ error: 'Error creating post' }, { status: 500 });
+  }
+}
+
+
+# Filename: ./app/api/sociope/products/search/route.ts
+# Path: /Users/admin/gp/commerce/./app/api/sociope/products/search/route.ts
+
+import { getProducts } from '@/lib/shopify';
+import { NextResponse } from 'next/server';
+
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const query = searchParams.get('q');
+
+    if (!query) {
+      return NextResponse.json({ error: 'Search query required' }, { status: 400 });
+    }
+
+    const products = await getProducts({
+      query,
+      sortKey: 'RELEVANCE'
+    });
+
+    return NextResponse.json(products);
+  } catch (error) {
+    console.error('Error searching products:', error);
+    return NextResponse.json({ error: 'Error searching products' }, { status: 500 });
+  }
+}
+
+
+# Filename: ./app/api/sociope/likes/route.ts
+# Path: /Users/admin/gp/commerce/./app/api/sociope/likes/route.ts
+
+// File: app/api/sociope/likes/route.ts
+import { prisma } from '@/lib/prisma';
+import { getServerSession } from 'next-auth';
+import { NextResponse } from 'next/server';
+
+export async function POST(req: Request) {
+  try {
+    const session = await getServerSession();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { postId } = await req.json();
+
+    const like = await prisma.like.create({
+      data: {
+        userId: session.user.id,
+        postId
+      }
+    });
+
+    return NextResponse.json(like);
+  } catch (error) {
+    console.error('Error creating like:', error);
+    return NextResponse.json({ error: 'Error creating like' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const session = await getServerSession();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const postId = searchParams.get('postId');
+
+    if (!postId) {
+      return NextResponse.json({ error: 'Post ID required' }, { status: 400 });
+    }
+
+    await prisma.like.deleteMany({
+      where: {
+        userId: session.user.id,
+        postId
+      }
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error removing like:', error);
+    return NextResponse.json({ error: 'Error removing like' }, { status: 500 });
+  }
+}
+
+
+# Filename: ./app/api/sociope/upload/route.ts
+# Path: /Users/admin/gp/commerce/./app/api/sociope/upload/route.ts
+
+// File: app/api/sociope/upload/route.ts
+import { writeFile } from 'fs/promises';
+import { getServerSession } from 'next-auth';
+import { NextResponse } from 'next/server';
+import { join } from 'path';
+
+export async function POST(req: Request) {
+  try {
+    const session = await getServerSession();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const formData = await req.formData();
+    const file = formData.get('file') as File;
+
+    if (!file) {
+      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    }
+
+    // In production, you would upload to a cloud storage service like S3
+    // This is a simple example saving to the public directory
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+
+    // Generate a unique filename
+    const uniqueName = `${Date.now()}-${file.name}`;
+    const path = join(process.cwd(), 'public/uploads', uniqueName);
+
+    await writeFile(path, buffer);
+
+    return NextResponse.json({
+      url: `/uploads/${uniqueName}`
+    });
+  } catch (error) {
+    console.error('Error uploading file:', error);
+    return NextResponse.json({ error: 'Error uploading file' }, { status: 500 });
+  }
+}
+
+
+# Filename: ./app/api/auth/register/route.ts
+# Path: /Users/admin/gp/commerce/./app/api/auth/register/route.ts
+
+// app/api/auth/register/route.ts
+import { prisma } from '@/lib/prisma';
+import { hash } from 'bcryptjs';
+import { NextResponse } from 'next/server';
+
+export async function POST(req: Request) {
+  try {
+    const { name, email, password } = await req.json();
+
+    // Check if user exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email }
+    });
+
+    if (existingUser) {
+      return NextResponse.json({ error: 'User already exists' }, { status: 400 });
+    }
+
+    // Hash password
+    const hashedPassword = await hash(password, 10);
+
+    // Create user
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email,
+        password: hashedPassword
+      }
+    });
+
+    return NextResponse.json({ message: 'User created successfully' }, { status: 201 });
+  } catch (error) {
+    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });
+  }
+}
+
+
+# Filename: ./app/api/auth/[...nextauth]/route.ts
+# Path: /Users/admin/gp/commerce/./app/api/auth/[...nextauth]/route.ts
+
+// File: app/api/auth/[...nextauth]/route.ts
+import { authConfig } from '@/lib/auth/config';
+import NextAuth from 'next-auth';
+
+const handler = NextAuth(authConfig);
+export { handler as GET, handler as POST };
+
+
+# Filename: ./app/api/placeholder/[...dimensions]/route.ts
+# Path: /Users/admin/gp/commerce/./app/api/placeholder/[...dimensions]/route.ts
+
+// app/api/placeholder/[...dimensions]/route.ts
+
+import { NextRequest } from 'next/server';
+
+interface RouteParams {
+  dimensions: string[];
+}
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<RouteParams> | RouteParams }
+): Promise<Response> {
+  try {
+    // Await the params
+    const resolvedParams = await params;
+    const [width, height] = resolvedParams.dimensions;
+
+    // Generate a unique seed based on dimensions
+    const seed = encodeURIComponent(`${width}x${height}`);
+
+    // Use Picsum with a consistent seed for caching
+    const imageUrl = `https://picsum.photos/seed/${seed}/${width}/${height}`;
+
+    const response = await fetch(imageUrl);
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch image');
+    }
+
+    const blob = await response.blob();
+
+    // Return the image with appropriate headers
+    return new Response(blob, {
+      headers: {
+        'Content-Type': response.headers.get('Content-Type') || 'image/jpeg',
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        Vary: 'Accept'
+      }
+    });
+  } catch (error) {
+    // Fallback SVG with the requested dimensions
+    const resolvedParams = await params;
+    const [width, height] = resolvedParams.dimensions;
+
+    const svg = `
+      <svg 
+        width="${width}" 
+        height="${height}" 
+        viewBox="0 0 ${width} ${height}" 
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <rect width="100%" height="100%" fill="#f0f0f0"/>
+        <rect width="100%" height="100%" fill="url(#pattern)"/>
+        <text 
+          x="50%" 
+          y="50%" 
+          font-family="system-ui" 
+          font-size="16" 
+          fill="#666" 
+          text-anchor="middle" 
+          dy=".3em"
+        >
+          ${width} × ${height}
+        </text>
+        <defs>
+          <pattern 
+            id="pattern" 
+            width="16" 
+            height="16" 
+            patternUnits="userSpaceOnUse" 
+            patternTransform="rotate(45)"
+          >
+            <rect width="1" height="16" fill="#ddd" fill-opacity="0.5"/>
+          </pattern>
+        </defs>
+      </svg>
+    `.trim();
+
+    return new Response(svg, {
+      headers: {
+        'Content-Type': 'image/svg+xml',
+        'Cache-Control': 'public, max-age=31536000, immutable'
+      }
+    });
+  }
+}
+
+export const runtime = 'edge';
 
 
 # Filename: ./app/api/revalidate/route.ts
@@ -755,14 +1387,21 @@ export default async function HomePage() {
 }
 
 
+# Filename: ./prisma/migrations/migration_lock.toml
+# Path: /Users/admin/gp/commerce/./prisma/migrations/migration_lock.toml
+
+# Please do not edit this file manually
+# It should be added in your version-control system (i.e. Git)
+provider = "postgresql"
+
 # Filename: ./prisma/schema.prisma
 # Path: /Users/admin/gp/commerce/./prisma/schema.prisma
 
 // prisma/schema.prisma
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -802,6 +1441,7 @@ model User {
   email         String    @unique
   emailVerified DateTime?
   image         String?
+  shopifyCustomerId String?  @unique
   password      String?
   role          String    @default("USER")
   loginAttempts Int       @default(0)
@@ -812,7 +1452,16 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  @@index([email])
+  // SocioPe relations
+  socialPosts     SocialPost[]
+  likes           Like[]
+  comments        Comment[]
+  reportsFiled    SociopeReport[] @relation("ReporterRelation")
+  reportsResolved SociopeReport[] @relation("AdminRelation")
+
+  // Follow relations
+  followers Follow[] @relation("Following")
+  following Follow[] @relation("Followers")
 }
 
 model VerificationToken {
@@ -822,6 +1471,118 @@ model VerificationToken {
 
   @@unique([identifier, token])
 }
+
+// SocioPe Enums
+enum ReportType {
+  POST
+  COMMENT
+  USER
+}
+
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
+enum PostVisibility {
+  PUBLIC
+  FOLLOWERS
+  PRIVATE
+}
+
+// SocioPe Models
+model SocialPost {
+  id         String         @id @default(cuid())
+  userId     String
+  user       User           @relation(fields: [userId], references: [id])
+  content    String
+  images     String[]
+  products   String[]
+  visibility PostVisibility @default(PUBLIC)
+  likes      Like[]
+  comments   Comment[]
+  tags       String[]
+  views      Int            @default(0)
+  shareCount Int            @default(0)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([tags])
+}
+
+model Like {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id])
+  postId    String
+  post      SocialPost @relation(fields: [postId], references: [id])
+  createdAt DateTime   @default(now())
+
+  @@unique([userId, postId])
+  @@index([userId])
+  @@index([postId])
+}
+
+model Comment {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id])
+  postId    String
+  post      SocialPost @relation(fields: [postId], references: [id])
+  content   String
+  parentId  String?
+  parent    Comment?   @relation("CommentReplies", fields: [parentId], references: [id])
+  replies   Comment[]  @relation("CommentReplies")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([postId])
+  @@index([parentId])
+}
+
+model SociopeReport {
+  id         String       @id @default(cuid())
+  type       ReportType
+  targetId   String
+  reporterId String
+  reporter   User         @relation("ReporterRelation", fields: [reporterId], references: [id])
+  status     ReportStatus @default(PENDING)
+  adminNotes String?
+  resolvedBy String?
+  admin      User?        @relation("AdminRelation", fields: [resolvedBy], references: [id])
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([reporterId])
+  @@index([status])
+}
+
+model SociopeSettings {
+  id              String   @id @default(cuid())
+  autoModKeywords String[]
+  userPostLimit   Int      @default(10)
+  imageRequired   Boolean  @default(false)
+  productRequired Boolean  @default(false)
+  updatedAt       DateTime @updatedAt
+}
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  follower    User     @relation("Followers", fields: [followerId], references: [id])
+  following   User     @relation("Following", fields: [followingId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+}
+
 
 # Filename: ./env.d.ts
 # Path: /Users/admin/gp/commerce/./env.d.ts
@@ -860,7 +1621,6 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Modern Emerald Theme
         primary: {
           DEFAULT: '#3DA35D', // Emerald Green
           light: '#6DCB73', // Leaf Green
@@ -876,6 +1636,10 @@ const config: Config = {
         fadeIn: {
           from: { opacity: '0', transform: 'translateY(10px)' },
           to: { opacity: '1', transform: 'translateY(0)' }
+        },
+        float: {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-5px)' }
         },
         marquee: {
           '0%': { transform: 'translateX(0%)' },
@@ -926,10 +1690,19 @@ const config: Config = {
             transform: 'translateY(0)',
             animationTimingFunction: 'cubic-bezier(0, 0, 0.2, 1)'
           }
+        },
+        'pulse-slow': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.85' }
         }
       },
       animation: {
         fadeIn: 'fadeIn .3s ease-in-out',
+        float: 'float 3s ease-in-out infinite',
+        'float-delay-1': 'float 3s ease-in-out infinite 0.2s',
+        'float-delay-2': 'float 3s ease-in-out infinite 0.4s',
+        'float-delay-3': 'float 3s ease-in-out infinite 0.6s',
+        'float-delay-4': 'float 3s ease-in-out infinite 0.8s',
         carousel: 'marquee 60s linear infinite',
         blink: 'blink 1.4s both infinite',
         shake: 'shake 0.5s cubic-bezier(.36,.07,.19,.97) both',
@@ -940,7 +1713,7 @@ const config: Config = {
         gradient: 'gradient 6s linear infinite',
         'spin-slow': 'spin-slow 3s linear infinite',
         'bounce-slow': 'bounce 3s ease-in-out infinite',
-        'pulse-slow': 'pulse 6s ease-in-out infinite'
+        'pulse-slow': 'pulse-slow 4s ease-in-out infinite'
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
@@ -1058,6 +1831,269 @@ const config: Config = {
 export default config;
 
 
+# Filename: ./components/ui/use-toast.tsx
+# Path: /Users/admin/gp/commerce/./components/ui/use-toast.tsx
+
+// File: components/ui/use-toast.ts
+import * as React from 'react';
+
+import type { ToastActionElement, ToastProps } from '@/components/ui/toast';
+
+const TOAST_LIMIT = 1;
+const TOAST_REMOVE_DELAY = 1000000;
+
+type ToasterToast = ToastProps & {
+  id: string;
+  title?: React.ReactNode;
+  description?: React.ReactNode;
+  action?: ToastActionElement;
+};
+
+const actionTypes = {
+  ADD_TOAST: 'ADD_TOAST',
+  UPDATE_TOAST: 'UPDATE_TOAST',
+  DISMISS_TOAST: 'DISMISS_TOAST',
+  REMOVE_TOAST: 'REMOVE_TOAST'
+} as const;
+
+let count = 0;
+
+function genId() {
+  count = (count + 1) % Number.MAX_VALUE;
+  return count.toString();
+}
+
+type ActionType = typeof actionTypes;
+
+type Action =
+  | {
+      type: ActionType['ADD_TOAST'];
+      toast: ToasterToast;
+    }
+  | {
+      type: ActionType['UPDATE_TOAST'];
+      toast: Partial<ToasterToast>;
+    }
+  | {
+      type: ActionType['DISMISS_TOAST'];
+      toastId?: ToasterToast['id'];
+    }
+  | {
+      type: ActionType['REMOVE_TOAST'];
+      toastId?: ToasterToast['id'];
+    };
+
+interface State {
+  toasts: ToasterToast[];
+}
+
+const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
+const addToRemoveQueue = (toastId: string) => {
+  if (toastTimeouts.has(toastId)) {
+    return;
+  }
+
+  const timeout = setTimeout(() => {
+    toastTimeouts.delete(toastId);
+    dispatch({
+      type: 'REMOVE_TOAST',
+      toastId: toastId
+    });
+  }, TOAST_REMOVE_DELAY);
+
+  toastTimeouts.set(toastId, timeout);
+};
+
+export const reducer = (state: State, action: Action): State => {
+  switch (action.type) {
+    case 'ADD_TOAST':
+      return {
+        ...state,
+        toasts: [action.toast, ...state.toasts].slice(0, TOAST_LIMIT)
+      };
+
+    case 'UPDATE_TOAST':
+      return {
+        ...state,
+        toasts: state.toasts.map((t) => (t.id === action.toast.id ? { ...t, ...action.toast } : t))
+      };
+
+    case 'DISMISS_TOAST': {
+      const { toastId } = action;
+
+      // ! Side effects ! - This could be extracted into a dismissToast() action,
+      // but I'll keep it here for simplicity
+      if (toastId) {
+        addToRemoveQueue(toastId);
+      } else {
+        state.toasts.forEach((toast) => {
+          addToRemoveQueue(toast.id);
+        });
+      }
+
+      return {
+        ...state,
+        toasts: state.toasts.map((t) =>
+          t.id === toastId || toastId === undefined
+            ? {
+                ...t,
+                open: false
+              }
+            : t
+        )
+      };
+    }
+    case 'REMOVE_TOAST':
+      if (action.toastId === undefined) {
+        return {
+          ...state,
+          toasts: []
+        };
+      }
+      return {
+        ...state,
+        toasts: state.toasts.filter((t) => t.id !== action.toastId)
+      };
+  }
+};
+
+const listeners: Array<(state: State) => void> = [];
+
+let memoryState: State = { toasts: [] };
+
+function dispatch(action: Action) {
+  memoryState = reducer(memoryState, action);
+  listeners.forEach((listener) => {
+    listener(memoryState);
+  });
+}
+
+type Toast = Omit<ToasterToast, 'id'>;
+
+function toast({ ...props }: Toast) {
+  const id = genId();
+
+  const update = (props: ToasterToast) =>
+    dispatch({
+      type: 'UPDATE_TOAST',
+      toast: { ...props, id }
+    });
+  const dismiss = () => dispatch({ type: 'DISMISS_TOAST', toastId: id });
+
+  dispatch({
+    type: 'ADD_TOAST',
+    toast: {
+      ...props,
+      id,
+      open: true,
+      onOpenChange: (open) => {
+        if (!open) dismiss();
+      }
+    }
+  });
+
+  return {
+    id: id,
+    dismiss,
+    update
+  };
+}
+
+function useToast() {
+  const [state, setState] = React.useState<State>(memoryState);
+
+  React.useEffect(() => {
+    listeners.push(setState);
+    return () => {
+      const index = listeners.indexOf(setState);
+      if (index > -1) {
+        listeners.splice(index, 1);
+      }
+    };
+  }, [state]);
+
+  return {
+    ...state,
+    toast,
+    dismiss: (toastId?: string) => dispatch({ type: 'DISMISS_TOAST', toastId })
+  };
+}
+
+export { toast, useToast };
+
+
+# Filename: ./components/ui/tabs.tsx
+# Path: /Users/admin/gp/commerce/./components/ui/tabs.tsx
+
+'use client';
+
+import { cn } from '@/lib/utils';
+import * as TabsPrimitive from '@radix-ui/react-tabs';
+import * as React from 'react';
+
+const Tabs = TabsPrimitive.Root;
+
+const TabsList = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.List>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.List
+    ref={ref}
+    className={cn(
+      'inline-flex h-10 items-center justify-center rounded-lg',
+      'bg-primary/5 p-1',
+      'dark:bg-primary-dark/5',
+      className
+    )}
+    {...props}
+  />
+));
+TabsList.displayName = TabsPrimitive.List.displayName;
+
+const TabsTrigger = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.Trigger
+    ref={ref}
+    className={cn(
+      'inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5',
+      'text-sm font-medium ring-offset-white transition-all',
+      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+      'disabled:pointer-events-none disabled:opacity-50',
+      'data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm',
+      'dark:ring-offset-primary-dark',
+      'dark:focus-visible:ring-primary-light',
+      'dark:data-[state=active]:bg-primary-dark dark:data-[state=active]:text-primary-light',
+      className
+    )}
+    {...props}
+  />
+));
+TabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
+
+const TabsContent = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.Content
+    ref={ref}
+    className={cn(
+      'mt-2',
+      'ring-offset-white',
+      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+      'dark:ring-offset-primary-dark dark:focus-visible:ring-primary-light',
+      className
+    )}
+    {...props}
+  />
+));
+TabsContent.displayName = TabsPrimitive.Content.displayName;
+
+export { Tabs, TabsContent, TabsList, TabsTrigger };
+
+
 # Filename: ./components/ui/card.tsx
 # Path: /Users/admin/gp/commerce/./components/ui/card.tsx
 
@@ -1123,6 +2159,1721 @@ CardFooter.displayName = 'CardFooter';
 export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle };
 
 
+# Filename: ./components/ui/label.tsx
+# Path: /Users/admin/gp/commerce/./components/ui/label.tsx
+
+'use client';
+
+import { cn } from '@/lib/utils';
+import * as LabelPrimitive from '@radix-ui/react-label';
+import * as React from 'react';
+
+const Label = React.forwardRef<
+  React.ElementRef<typeof LabelPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root>
+>(({ className, ...props }, ref) => (
+  <LabelPrimitive.Root
+    ref={ref}
+    className={cn(
+      'text-sm font-medium leading-none',
+      'text-primary-dark dark:text-primary-gray',
+      'peer-disabled:cursor-not-allowed peer-disabled:opacity-70',
+      className
+    )}
+    {...props}
+  />
+));
+
+Label.displayName = LabelPrimitive.Root.displayName;
+
+export { Label };
+
+
+# Filename: ./components/ui/image-with-fallback.tsx
+# Path: /Users/admin/gp/commerce/./components/ui/image-with-fallback.tsx
+
+// components/ui/image-with-fallback.tsx
+
+import Image from 'next/image';
+import { useState } from 'react';
+
+interface ImageWithFallbackProps {
+  src: string;
+  alt: string;
+  width: number;
+  height: number;
+  className?: string;
+}
+
+export function ImageWithFallback({ src, alt, width, height, className }: ImageWithFallbackProps) {
+  const [error, setError] = useState(false);
+
+  return (
+    <div className={`relative overflow-hidden ${className}`} style={{ width, height }}>
+      {error ? (
+        <div
+          className="flex h-full w-full items-center justify-center bg-gray-100 dark:bg-gray-800"
+          style={{ width, height }}
+        >
+          <span className="text-sm text-gray-500 dark:text-gray-400">{alt}</span>
+        </div>
+      ) : (
+        <Image
+          src={src}
+          alt={alt}
+          width={width}
+          height={height}
+          className={className}
+          onError={() => setError(true)}
+          loading="lazy"
+          quality={90}
+        />
+      )}
+    </div>
+  );
+}
+
+
+# Filename: ./components/ui/dialog.tsx
+# Path: /Users/admin/gp/commerce/./components/ui/dialog.tsx
+
+// File: components/ui/dialog.tsx
+'use client';
+
+import { cn } from '@/lib/utils';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { X } from 'lucide-react';
+import * as React from 'react';
+
+const Dialog = DialogPrimitive.Root;
+
+const DialogTrigger = DialogPrimitive.Trigger;
+
+// Remove className from DialogPortal
+const DialogPortal = DialogPrimitive.Portal;
+
+const DialogOverlay = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Overlay>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Overlay
+    ref={ref}
+    className={cn(
+      'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/80 backdrop-blur-sm',
+      className
+    )}
+    {...props}
+  />
+));
+DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
+
+const DialogContent = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
+>(({ className, children, ...props }, ref) => (
+  <DialogPortal>
+    <DialogOverlay />
+    <DialogPrimitive.Content
+      ref={ref}
+      className={cn(
+        'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-primary/20 bg-white p-6 shadow-lg duration-200 dark:border-primary-dark/20 dark:bg-primary-dark sm:rounded-lg',
+        className
+      )}
+      {...props}
+    >
+      {children}
+      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-primary-dark/10 data-[state=open]:text-primary-gray dark:ring-offset-primary-dark dark:focus:ring-primary-light dark:data-[state=open]:bg-primary-gray/10">
+        <X className="h-4 w-4" />
+        <span className="sr-only">Close</span>
+      </DialogPrimitive.Close>
+    </DialogPrimitive.Content>
+  </DialogPortal>
+));
+DialogContent.displayName = DialogPrimitive.Content.displayName;
+
+const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+  <div className={cn('flex flex-col space-y-1.5 text-center sm:text-left', className)} {...props} />
+);
+DialogHeader.displayName = 'DialogHeader';
+
+const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    className={cn('flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2', className)}
+    {...props}
+  />
+);
+DialogFooter.displayName = 'DialogFooter';
+
+const DialogTitle = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Title>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Title
+    ref={ref}
+    className={cn('text-lg font-semibold leading-none tracking-tight', className)}
+    {...props}
+  />
+));
+DialogTitle.displayName = DialogPrimitive.Title.displayName;
+
+const DialogDescription = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Description>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Description
+    ref={ref}
+    className={cn('text-sm text-primary-dark/60 dark:text-primary-gray/60', className)}
+    {...props}
+  />
+));
+DialogDescription.displayName = DialogPrimitive.Description.displayName;
+
+export {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+  DialogTrigger
+};
+
+
+# Filename: ./components/ui/separator.tsx
+# Path: /Users/admin/gp/commerce/./components/ui/separator.tsx
+
+'use client';
+
+import { cn } from '@/lib/utils';
+import * as SeparatorPrimitive from '@radix-ui/react-separator';
+import * as React from 'react';
+
+const Separator = React.forwardRef<
+  React.ElementRef<typeof SeparatorPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof SeparatorPrimitive.Root>
+>(({ className, orientation = 'horizontal', decorative = true, ...props }, ref) => (
+  <SeparatorPrimitive.Root
+    ref={ref}
+    decorative={decorative}
+    orientation={orientation}
+    className={cn(
+      'shrink-0',
+      orientation === 'horizontal' ? 'h-[1px] w-full' : 'h-full w-[1px]',
+      'bg-primary/20 dark:bg-primary-dark/20',
+      className
+    )}
+    {...props}
+  />
+));
+
+Separator.displayName = SeparatorPrimitive.Root.displayName;
+
+export { Separator };
+
+
+# Filename: ./components/ui/button.tsx
+# Path: /Users/admin/gp/commerce/./components/ui/button.tsx
+
+// File: components/ui/button.tsx
+import { cn } from '@/lib/utils';
+import { cva, type VariantProps } from 'class-variance-authority';
+import * as React from 'react';
+
+const buttonVariants = cva(
+  'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 dark:focus-visible:ring-primary-light',
+  {
+    variants: {
+      variant: {
+        default:
+          'bg-primary text-white hover:bg-primary/90 dark:bg-primary-light dark:text-primary-dark dark:hover:bg-primary-light/90',
+        destructive:
+          'bg-red-500 text-white hover:bg-red-500/90 dark:bg-red-900 dark:text-red-50 dark:hover:bg-red-900/90',
+        outline:
+          'border border-primary/20 bg-white hover:bg-primary/5 hover:text-primary dark:border-primary-dark/20 dark:bg-primary-dark dark:hover:bg-primary-light/10 dark:hover:text-primary-light',
+        secondary:
+          'bg-primary/10 text-primary hover:bg-primary/20 dark:bg-primary-light/10 dark:text-primary-light dark:hover:bg-primary-light/20',
+        ghost:
+          'hover:bg-primary/5 hover:text-primary dark:hover:bg-primary-light/10 dark:hover:text-primary-light',
+        link: 'text-primary underline-offset-4 hover:underline dark:text-primary-light'
+      },
+      size: {
+        default: 'h-10 px-4 py-2',
+        sm: 'h-9 rounded-md px-3',
+        lg: 'h-11 rounded-md px-8',
+        icon: 'h-10 w-10'
+      }
+    },
+    defaultVariants: {
+      variant: 'default',
+      size: 'default'
+    }
+  }
+);
+
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  asChild?: boolean;
+}
+
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant, size, asChild = false, ...props }, ref) => {
+    return (
+      <button className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
+    );
+  }
+);
+
+Button.displayName = 'Button';
+
+export { Button, buttonVariants };
+
+
+# Filename: ./components/ui/toast.tsx
+# Path: /Users/admin/gp/commerce/./components/ui/toast.tsx
+
+// File: components/ui/toast.tsx
+import * as ToastPrimitives from '@radix-ui/react-toast';
+import { cva, type VariantProps } from 'class-variance-authority';
+import { X } from 'lucide-react';
+import * as React from 'react';
+
+import { cn } from '@/lib/utils';
+
+const ToastProvider = ToastPrimitives.Provider;
+
+const ToastViewport = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Viewport>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Viewport>
+>(({ className, ...props }, ref) => (
+  <ToastPrimitives.Viewport
+    ref={ref}
+    className={cn(
+      'fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]',
+      className
+    )}
+    {...props}
+  />
+));
+ToastViewport.displayName = ToastPrimitives.Viewport.displayName;
+
+const toastVariants = cva(
+  'group pointer-events-auto relative flex w-full items-center justify-between space-x-4 overflow-hidden rounded-md border border-primary/20 p-6 pr-8 shadow-lg transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full dark:border-primary-dark/20',
+  {
+    variants: {
+      variant: {
+        default: 'border bg-white text-primary-dark dark:bg-primary-dark dark:text-primary-gray',
+        destructive:
+          'destructive group border-red-500 bg-red-500 text-white dark:border-red-900 dark:bg-red-900 dark:text-red-50'
+      }
+    },
+    defaultVariants: {
+      variant: 'default'
+    }
+  }
+);
+
+const Toast = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Root>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Root> & VariantProps<typeof toastVariants>
+>(({ className, variant, ...props }, ref) => {
+  return (
+    <ToastPrimitives.Root
+      ref={ref}
+      className={cn(toastVariants({ variant }), className)}
+      {...props}
+    />
+  );
+});
+Toast.displayName = ToastPrimitives.Root.displayName;
+
+const ToastAction = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Action>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Action>
+>(({ className, ...props }, ref) => (
+  <ToastPrimitives.Action
+    ref={ref}
+    className={cn(
+      'inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-transparent px-3 text-sm font-medium ring-offset-white transition-colors hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 group-[.destructive]:border-red-500/30 group-[.destructive]:hover:border-red-500/30 group-[.destructive]:hover:bg-red-500 group-[.destructive]:hover:text-white group-[.destructive]:focus:ring-red-500 dark:border-primary-dark/20 dark:ring-offset-primary-dark dark:hover:bg-primary-dark/5 dark:focus:ring-primary-light dark:group-[.destructive]:border-red-900/30 dark:group-[.destructive]:hover:border-red-900/30 dark:group-[.destructive]:hover:bg-red-900 dark:group-[.destructive]:hover:text-red-50 dark:group-[.destructive]:focus:ring-red-900',
+      className
+    )}
+    {...props}
+  />
+));
+ToastAction.displayName = ToastPrimitives.Action.displayName;
+
+const ToastClose = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Close>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Close>
+>(({ className, ...props }, ref) => (
+  <ToastPrimitives.Close
+    ref={ref}
+    className={cn(
+      'absolute right-2 top-2 rounded-md p-1 text-primary-dark/50 opacity-0 transition-opacity hover:text-primary-dark focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100 group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-50 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-600 dark:text-primary-gray/50 dark:hover:text-primary-gray',
+      className
+    )}
+    toast-close=""
+    {...props}
+  >
+    <X className="h-4 w-4" />
+  </ToastPrimitives.Close>
+));
+ToastClose.displayName = ToastPrimitives.Close.displayName;
+
+const ToastTitle = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Title>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Title>
+>(({ className, ...props }, ref) => (
+  <ToastPrimitives.Title ref={ref} className={cn('text-sm font-semibold', className)} {...props} />
+));
+ToastTitle.displayName = ToastPrimitives.Title.displayName;
+
+const ToastDescription = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Description>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Description>
+>(({ className, ...props }, ref) => (
+  <ToastPrimitives.Description
+    ref={ref}
+    className={cn('text-sm opacity-90', className)}
+    {...props}
+  />
+));
+ToastDescription.displayName = ToastPrimitives.Description.displayName;
+
+type ToastProps = React.ComponentPropsWithoutRef<typeof Toast>;
+
+type ToastActionElement = React.ReactElement<typeof ToastAction>;
+
+export {
+  Toast,
+  ToastAction,
+  ToastClose,
+  ToastDescription,
+  ToastProvider,
+  ToastTitle,
+  ToastViewport,
+  type ToastActionElement,
+  type ToastProps
+};
+
+
+# Filename: ./components/ui/dropdown-menu.tsx
+# Path: /Users/admin/gp/commerce/./components/ui/dropdown-menu.tsx
+
+// File: components/ui/dropdown-menu.tsx
+'use client';
+
+import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
+import { Check, ChevronRight, Circle } from 'lucide-react';
+import * as React from 'react';
+
+import { cn } from '@/lib/utils';
+
+const DropdownMenu = DropdownMenuPrimitive.Root;
+
+const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
+
+const DropdownMenuGroup = DropdownMenuPrimitive.Group;
+
+const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
+
+const DropdownMenuSub = DropdownMenuPrimitive.Sub;
+
+const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
+
+const DropdownMenuSubTrigger = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.SubTrigger>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger> & {
+    inset?: boolean;
+  }
+>(({ className, inset, children, ...props }, ref) => (
+  <DropdownMenuPrimitive.SubTrigger
+    ref={ref}
+    className={cn(
+      'flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-primary/5 data-[state=open]:bg-primary/5 dark:focus:bg-primary-dark/10 dark:data-[state=open]:bg-primary-dark/10',
+      inset && 'pl-8',
+      className
+    )}
+    {...props}
+  >
+    {children}
+    <ChevronRight className="ml-auto h-4 w-4" />
+  </DropdownMenuPrimitive.SubTrigger>
+));
+DropdownMenuSubTrigger.displayName = DropdownMenuPrimitive.SubTrigger.displayName;
+
+const DropdownMenuSubContent = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.SubContent>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubContent>
+>(({ className, ...props }, ref) => (
+  <DropdownMenuPrimitive.SubContent
+    ref={ref}
+    className={cn(
+      'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] overflow-hidden rounded-md border border-primary/20 bg-white p-1 text-primary-dark shadow-lg dark:border-primary-dark/20 dark:bg-primary-dark dark:text-primary-gray',
+      className
+    )}
+    {...props}
+  />
+));
+DropdownMenuSubContent.displayName = DropdownMenuPrimitive.SubContent.displayName;
+
+const DropdownMenuContent = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
+>(({ className, sideOffset = 4, ...props }, ref) => (
+  <DropdownMenuPrimitive.Portal>
+    <DropdownMenuPrimitive.Content
+      ref={ref}
+      sideOffset={sideOffset}
+      className={cn(
+        'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] overflow-hidden rounded-md border border-primary/20 bg-white p-1 text-primary-dark shadow-md dark:border-primary-dark/20 dark:bg-primary-dark dark:text-primary-gray',
+        className
+      )}
+      {...props}
+    />
+  </DropdownMenuPrimitive.Portal>
+));
+DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName;
+
+const DropdownMenuItem = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.Item>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> & {
+    inset?: boolean;
+  }
+>(({ className, inset, ...props }, ref) => (
+  <DropdownMenuPrimitive.Item
+    ref={ref}
+    className={cn(
+      'relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-primary/5 focus:text-primary-dark data-[disabled]:pointer-events-none data-[disabled]:opacity-50 dark:focus:bg-primary-dark/10 dark:focus:text-primary-gray',
+      inset && 'pl-8',
+      className
+    )}
+    {...props}
+  />
+));
+DropdownMenuItem.displayName = DropdownMenuPrimitive.Item.displayName;
+
+const DropdownMenuCheckboxItem = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.CheckboxItem>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.CheckboxItem>
+>(({ className, children, checked, ...props }, ref) => (
+  <DropdownMenuPrimitive.CheckboxItem
+    ref={ref}
+    className={cn(
+      'relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-primary/5 focus:text-primary-dark data-[disabled]:pointer-events-none data-[disabled]:opacity-50 dark:focus:bg-primary-dark/10 dark:focus:text-primary-gray',
+      className
+    )}
+    checked={checked}
+    {...props}
+  >
+    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+      <DropdownMenuPrimitive.ItemIndicator>
+        <Check className="h-4 w-4" />
+      </DropdownMenuPrimitive.ItemIndicator>
+    </span>
+    {children}
+  </DropdownMenuPrimitive.CheckboxItem>
+));
+DropdownMenuCheckboxItem.displayName = DropdownMenuPrimitive.CheckboxItem.displayName;
+
+const DropdownMenuRadioItem = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.RadioItem>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.RadioItem>
+>(({ className, children, ...props }, ref) => (
+  <DropdownMenuPrimitive.RadioItem
+    ref={ref}
+    className={cn(
+      'relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-primary/5 focus:text-primary-dark data-[disabled]:pointer-events-none data-[disabled]:opacity-50 dark:focus:bg-primary-dark/10 dark:focus:text-primary-gray',
+      className
+    )}
+    {...props}
+  >
+    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+      <DropdownMenuPrimitive.ItemIndicator>
+        <Circle className="h-2 w-2 fill-current" />
+      </DropdownMenuPrimitive.ItemIndicator>
+    </span>
+    {children}
+  </DropdownMenuPrimitive.RadioItem>
+));
+DropdownMenuRadioItem.displayName = DropdownMenuPrimitive.RadioItem.displayName;
+
+const DropdownMenuLabel = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.Label>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Label> & {
+    inset?: boolean;
+  }
+>(({ className, inset, ...props }, ref) => (
+  <DropdownMenuPrimitive.Label
+    ref={ref}
+    className={cn('px-2 py-1.5 text-sm font-semibold', inset && 'pl-8', className)}
+    {...props}
+  />
+));
+DropdownMenuLabel.displayName = DropdownMenuPrimitive.Label.displayName;
+
+const DropdownMenuSeparator = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.Separator>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Separator>
+>(({ className, ...props }, ref) => (
+  <DropdownMenuPrimitive.Separator
+    ref={ref}
+    className={cn('-mx-1 my-1 h-px bg-primary/20 dark:bg-primary-dark/20', className)}
+    {...props}
+  />
+));
+DropdownMenuSeparator.displayName = DropdownMenuPrimitive.Separator.displayName;
+
+const DropdownMenuShortcut = ({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) => {
+  return (
+    <span className={cn('ml-auto text-xs tracking-widest opacity-60', className)} {...props} />
+  );
+};
+DropdownMenuShortcut.displayName = 'DropdownMenuShortcut';
+
+export {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger
+};
+
+
+# Filename: ./components/ui/textarea.tsx
+# Path: /Users/admin/gp/commerce/./components/ui/textarea.tsx
+
+// components/ui/textarea.tsx
+import { cn } from '@/lib/utils';
+import { VariantProps, cva } from 'class-variance-authority';
+import * as React from 'react';
+
+const textareaVariants = cva(
+  [
+    // Base styles
+    'w-full min-h-[80px] rounded-lg transition-all duration-200',
+    'text-sm leading-relaxed resize-none',
+
+    // Background and backdrop effects
+    'bg-white/80 dark:bg-neutral-900/80',
+    'backdrop-blur-md backdrop-saturate-150',
+
+    // Border styles
+    'border border-neutral-200/80 dark:border-neutral-800/80',
+    'hover:border-primary/30 dark:hover:border-primary-light/30',
+
+    // Ring styles
+    'ring-offset-white dark:ring-offset-neutral-900',
+    'focus:outline-none focus:ring-2 focus:ring-primary/20 dark:focus:ring-primary-light/20',
+    'focus:ring-offset-2 focus:border-primary dark:focus:border-primary-light',
+
+    // Placeholder styles
+    'placeholder:text-neutral-500/60 dark:placeholder:text-neutral-400/60',
+
+    // Padding and scrollbar styles
+    'px-4 py-3',
+    'scrollbar-thin scrollbar-thumb-neutral-200 dark:scrollbar-thumb-neutral-700',
+    'scrollbar-track-transparent'
+  ],
+  {
+    variants: {
+      variant: {
+        default: '',
+        error: [
+          'border-red-500/50 dark:border-red-500/50',
+          'focus:border-red-500 dark:focus:border-red-500',
+          'focus:ring-red-500/20 dark:focus:ring-red-500/20',
+          'text-red-600 dark:text-red-500',
+          'placeholder:text-red-500/60 dark:placeholder:text-red-500/60'
+        ],
+        success: [
+          'border-green-500/50 dark:border-green-500/50',
+          'focus:border-green-500 dark:focus:border-green-500',
+          'focus:ring-green-500/20 dark:focus:ring-green-500/20'
+        ]
+      },
+      size: {
+        default: 'min-h-[80px]',
+        sm: 'min-h-[60px] text-xs',
+        lg: 'min-h-[120px]',
+        xl: 'min-h-[160px]'
+      }
+    },
+    defaultVariants: {
+      variant: 'default',
+      size: 'default'
+    }
+  }
+);
+
+export interface TextareaProps
+  extends React.TextareaHTMLAttributes<HTMLTextAreaElement>,
+    VariantProps<typeof textareaVariants> {
+  label?: string;
+  error?: string;
+  helperText?: string;
+  maxLength?: number;
+  showCount?: boolean;
+}
+
+const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
+  (
+    {
+      className,
+      variant,
+      size,
+      label,
+      error,
+      helperText,
+      maxLength,
+      showCount,
+      value = '',
+      onChange,
+      ...props
+    },
+    ref
+  ) => {
+    const [charCount, setCharCount] = React.useState(String(value).length);
+
+    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      setCharCount(e.target.value.length);
+      onChange?.(e);
+    };
+
+    // Auto-resize functionality
+    const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+    React.useEffect(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+
+      const adjustHeight = () => {
+        textarea.style.height = 'auto';
+        textarea.style.height = `${textarea.scrollHeight}px`;
+      };
+
+      textarea.addEventListener('input', adjustHeight);
+      adjustHeight(); // Initial adjustment
+
+      return () => textarea.removeEventListener('input', adjustHeight);
+    }, []);
+
+    return (
+      <div className="w-full space-y-2">
+        {label && (
+          <label className="mb-2 block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+            {label}
+          </label>
+        )}
+
+        <div className="relative">
+          <textarea
+            ref={(element) => {
+              // Handle both refs
+              if (typeof ref === 'function') {
+                ref(element);
+              } else if (ref) {
+                ref.current = element;
+              }
+              if (textareaRef) {
+                textareaRef.current = element;
+              }
+            }}
+            className={cn(textareaVariants({ variant, size, className }))}
+            value={value}
+            onChange={handleChange}
+            maxLength={maxLength}
+            {...props}
+          />
+
+          {maxLength && showCount && (
+            <div className="pointer-events-none absolute bottom-2 right-2">
+              <span className="text-xs text-neutral-400">
+                {charCount}/{maxLength}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {(error || helperText) && (
+          <div className="mt-1.5 text-xs">
+            {error && <span className="text-red-500">{error}</span>}
+            {helperText && !error && (
+              <span className="text-neutral-500 dark:text-neutral-400">{helperText}</span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+);
+
+Textarea.displayName = 'Textarea';
+
+export { Textarea, textareaVariants };
+
+
+# Filename: ./components/ui/input.tsx
+# Path: /Users/admin/gp/commerce/./components/ui/input.tsx
+
+// File: components/ui/input.tsx
+import { cn } from '@/lib/utils';
+import * as React from 'react';
+
+export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {}
+
+const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ className, type, ...props }, ref) => {
+    return (
+      <input
+        type={type}
+        className={cn(
+          'flex h-10 w-full rounded-md border border-primary/20 bg-white px-3 py-2 text-sm',
+          'ring-offset-white placeholder:text-primary-dark/60',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+          'disabled:cursor-not-allowed disabled:opacity-50',
+          'dark:border-primary-dark/20 dark:bg-primary-dark dark:ring-offset-primary-dark',
+          'dark:placeholder:text-primary-gray/60',
+          'dark:focus-visible:ring-primary-light',
+          className
+        )}
+        ref={ref}
+        {...props}
+      />
+    );
+  }
+);
+
+Input.displayName = 'Input';
+
+export { Input };
+
+
+# Filename: ./components/ui/form.tsx
+# Path: /Users/admin/gp/commerce/./components/ui/form.tsx
+
+'use client';
+
+import * as LabelPrimitive from '@radix-ui/react-label';
+import { Slot } from '@radix-ui/react-slot';
+import * as React from 'react';
+import {
+  Controller,
+  ControllerProps,
+  FieldPath,
+  FieldValues,
+  FormProvider,
+  useFormContext
+} from 'react-hook-form';
+
+import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
+
+const Form = FormProvider;
+
+type FormFieldContextValue<
+  TFieldValues extends FieldValues = FieldValues,
+  TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>
+> = {
+  name: TName;
+};
+
+const FormFieldContext = React.createContext<FormFieldContextValue>({} as FormFieldContextValue);
+
+const FormField = <
+  TFieldValues extends FieldValues = FieldValues,
+  TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>
+>({
+  ...props
+}: ControllerProps<TFieldValues, TName>) => {
+  return (
+    <FormFieldContext.Provider value={{ name: props.name }}>
+      <Controller {...props} />
+    </FormFieldContext.Provider>
+  );
+};
+
+const useFormField = () => {
+  const fieldContext = React.useContext(FormFieldContext);
+  const itemContext = React.useContext(FormItemContext);
+  const { getFieldState, formState } = useFormContext();
+
+  const fieldState = getFieldState(fieldContext.name, formState);
+
+  if (!fieldContext) {
+    throw new Error('useFormField should be used within <FormField>');
+  }
+
+  const { id } = itemContext;
+
+  return {
+    id,
+    name: fieldContext.name,
+    formItemId: `${id}-form-item`,
+    formDescriptionId: `${id}-form-item-description`,
+    formMessageId: `${id}-form-item-message`,
+    ...fieldState
+  };
+};
+
+type FormItemContextValue = {
+  id: string;
+};
+
+const FormItemContext = React.createContext<FormItemContextValue>({} as FormItemContextValue);
+
+const FormItem = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => {
+    const id = React.useId();
+
+    return (
+      <FormItemContext.Provider value={{ id }}>
+        <div ref={ref} className={cn('space-y-2', className)} {...props} />
+      </FormItemContext.Provider>
+    );
+  }
+);
+FormItem.displayName = 'FormItem';
+
+const FormLabel = React.forwardRef<
+  React.ElementRef<typeof LabelPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root>
+>(({ className, ...props }, ref) => {
+  const { error, formItemId } = useFormField();
+
+  return (
+    <Label
+      ref={ref}
+      className={cn(error && 'text-red-500 dark:text-red-400', className)}
+      htmlFor={formItemId}
+      {...props}
+    />
+  );
+});
+FormLabel.displayName = 'FormLabel';
+
+const FormControl = React.forwardRef<
+  React.ElementRef<typeof Slot>,
+  React.ComponentPropsWithoutRef<typeof Slot>
+>(({ ...props }, ref) => {
+  const { error, formItemId, formDescriptionId, formMessageId } = useFormField();
+
+  return (
+    <Slot
+      ref={ref}
+      id={formItemId}
+      aria-describedby={!error ? `${formDescriptionId}` : `${formDescriptionId} ${formMessageId}`}
+      aria-invalid={!!error}
+      {...props}
+    />
+  );
+});
+FormControl.displayName = 'FormControl';
+
+const FormDescription = React.forwardRef<
+  HTMLParagraphElement,
+  React.HTMLAttributes<HTMLParagraphElement>
+>(({ className, ...props }, ref) => {
+  const { formDescriptionId } = useFormField();
+
+  return (
+    <p
+      ref={ref}
+      id={formDescriptionId}
+      className={cn('text-sm text-neutral-500 dark:text-neutral-400', className)}
+      {...props}
+    />
+  );
+});
+FormDescription.displayName = 'FormDescription';
+
+const FormMessage = React.forwardRef<
+  HTMLParagraphElement,
+  React.HTMLAttributes<HTMLParagraphElement>
+>(({ className, children, ...props }, ref) => {
+  const { error, formMessageId } = useFormField();
+  const body = error ? String(error?.message) : children;
+
+  if (!body) {
+    return null;
+  }
+
+  return (
+    <p
+      ref={ref}
+      id={formMessageId}
+      className={cn('text-sm font-medium text-red-500 dark:text-red-400', className)}
+      {...props}
+    >
+      {body}
+    </p>
+  );
+});
+FormMessage.displayName = 'FormMessage';
+
+export {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  useFormField
+};
+
+
+# Filename: ./components/sociope/image-upload.tsx
+# Path: /Users/admin/gp/commerce/./components/sociope/image-upload.tsx
+
+// File: components/sociope/image-upload.tsx
+import { Upload, X } from 'lucide-react';
+import React, { useCallback } from 'react';
+
+interface ImageUploadProps {
+  onChange: (files: string[]) => void;
+  value: string[];
+  maxImages?: number;
+}
+
+export function ImageUpload({ onChange, value = [], maxImages = 4 }: ImageUploadProps) {
+  const handleUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files?.length) return;
+
+      // In a real app, you'd upload to a storage service
+      // For now, we'll create object URLs
+      const newImages = Array.from(files).map((file) => URL.createObjectURL(file));
+      onChange([...value, ...newImages].slice(0, maxImages));
+    },
+    [value, onChange, maxImages]
+  );
+
+  const removeImage = useCallback(
+    (index: number) => {
+      onChange(value.filter((_, i) => i !== index));
+    },
+    [value, onChange]
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {value.map((image, index) => (
+          <div key={index} className="relative aspect-square">
+            <img
+              src={image}
+              alt={`Upload ${index + 1}`}
+              className="h-full w-full rounded-lg object-cover"
+            />
+            <button
+              onClick={() => removeImage(index)}
+              className="absolute -right-2 -top-2 rounded-full bg-primary-dark/80 p-1 text-white hover:bg-primary-dark"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
+        {value.length < maxImages && (
+          <label className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-primary/40 hover:border-primary">
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleUpload}
+            />
+            <Upload className="h-6 w-6 text-primary/60" />
+          </label>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+# Filename: ./components/sociope/feed.tsx
+# Path: /Users/admin/gp/commerce/./components/sociope/feed.tsx
+
+// File: components/sociope/feed.tsx
+'use client';
+
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { useDebounce } from '@/hooks/use-debounce';
+import { sociopeApi } from '@/lib/sociope/api';
+import type { Comment, Product, SocialPost } from '@/lib/sociope/types';
+import {
+  Heart,
+  Image as ImageIcon,
+  MessageCircle,
+  Search,
+  Share2,
+  Tag,
+  User,
+  X
+} from 'lucide-react';
+import { useSession } from 'next-auth/react';
+import { useEffect, useState } from 'react';
+import { useInView } from 'react-intersection-observer';
+
+const CreatePost = () => {
+  const { data: session } = useSession();
+  const [content, setContent] = useState('');
+  const [images, setImages] = useState<string[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showImageUpload, setShowImageUpload] = useState(false);
+  const [showProductPicker, setShowProductPicker] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const debouncedSearch = useDebounce(searchQuery, 300);
+
+  useEffect(() => {
+    if (debouncedSearch) {
+      searchProducts(debouncedSearch);
+    } else {
+      setSearchResults([]);
+    }
+  }, [debouncedSearch]);
+
+  const searchProducts = async (query: string) => {
+    try {
+      const results = await sociopeApi.searchProducts(query);
+      setSearchResults(results);
+    } catch (error) {
+      console.error('Failed to search products:', error);
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+
+    const formData = new FormData();
+    formData.append('file', files[0]);
+
+    try {
+      const response = await fetch('/api/sociope/upload', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+      if (data.url) {
+        setImages((prev) => [...prev, data.url]);
+      }
+    } catch (error) {
+      console.error('Failed to upload image:', error);
+    }
+  };
+
+  const removeImage = (index: number) => {
+    setImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = async () => {
+    if (!content.trim()) return;
+
+    setIsSubmitting(true);
+    try {
+      await sociopeApi.createPost({
+        content,
+        images,
+        productIds: products.map((p) => p.id)
+      });
+
+      // Reset form
+      setContent('');
+      setImages([]);
+      setProducts([]);
+      setShowImageUpload(false);
+      setShowProductPicker(false);
+      window.location.reload(); // Temporary solution to refresh feed
+    } catch (error) {
+      console.error('Failed to create post:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (!session) return null;
+
+  return (
+    <Card className="mb-6">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20">
+            {session.user?.image ? (
+              <img
+                src={session.user.image}
+                alt={session.user.name || 'User'}
+                className="h-10 w-10 rounded-full object-cover"
+              />
+            ) : (
+              <User className="h-6 w-6 text-primary" />
+            )}
+          </div>
+          <div className="flex-1">
+            <Textarea
+              placeholder="Share your thoughts..."
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              className="min-h-[60px] resize-none bg-primary-gray/20 dark:bg-primary-dark/40"
+            />
+          </div>
+        </div>
+
+        {showImageUpload && (
+          <div className="mt-4 space-y-4">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {images.map((image, index) => (
+                <div key={index} className="relative aspect-square">
+                  <img
+                    src={image}
+                    alt={`Upload ${index + 1}`}
+                    className="h-full w-full rounded-lg object-cover"
+                  />
+                  <button
+                    onClick={() => removeImage(index)}
+                    className="absolute -right-2 -top-2 rounded-full bg-primary-dark/80 p-1 text-white hover:bg-primary-dark"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+              {images.length < 4 && (
+                <label className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-primary/40 hover:border-primary">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleImageUpload}
+                  />
+                  <ImageIcon className="h-6 w-6 text-primary/60" />
+                </label>
+              )}
+            </div>
+          </div>
+        )}
+
+        {showProductPicker && (
+          <div className="mt-4 space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-5 w-5 text-primary-dark/40" />
+              <Input
+                placeholder="Search products..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+
+            {searchResults.length > 0 && (
+              <div className="max-h-64 space-y-2 overflow-auto rounded-lg border border-primary/20 p-2">
+                {searchResults.map((product) => (
+                  <button
+                    key={product.id}
+                    onClick={() => {
+                      setProducts((prev) => [...prev, product]);
+                      setSearchQuery('');
+                      setSearchResults([]);
+                    }}
+                    disabled={products.some((p) => p.id === product.id)}
+                    className="w-full rounded-lg p-2 text-left hover:bg-primary/5 disabled:opacity-50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={product.featuredImage?.url || '/api/placeholder/48/48'}
+                        alt={product.title}
+                        className="h-12 w-12 rounded-md object-cover"
+                      />
+                      <div>
+                        <div className="font-medium">{product.title}</div>
+                        <div className="text-sm text-primary">
+                          {product.priceRange.minVariantPrice.amount}{' '}
+                          {product.priceRange.minVariantPrice.currencyCode}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {products.length > 0 && (
+              <div className="space-y-2">
+                <div className="font-medium">Selected Products</div>
+                {products.map((product) => (
+                  <div
+                    key={product.id}
+                    className="flex items-center justify-between rounded-lg border border-primary/20 p-2"
+                  >
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={product.featuredImage?.url || '/api/placeholder/32/32'}
+                        alt={product.title}
+                        className="h-8 w-8 rounded-md object-cover"
+                      />
+                      <span className="font-medium">{product.title}</span>
+                    </div>
+                    <button
+                      onClick={() => setProducts((prev) => prev.filter((p) => p.id !== product.id))}
+                      className="text-primary-dark/60 hover:text-primary"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="mt-4 flex items-center justify-between">
+          <div className="flex gap-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowImageUpload(!showImageUpload)}
+              className={showImageUpload ? 'text-primary' : ''}
+            >
+              <ImageIcon className="mr-2 h-5 w-5" />
+              Photo
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowProductPicker(!showProductPicker)}
+              className={showProductPicker ? 'text-primary' : ''}
+            >
+              <Tag className="mr-2 h-5 w-5" />
+              Product
+            </Button>
+          </div>
+          <Button onClick={handleSubmit} disabled={!content.trim() || isSubmitting}>
+            Post
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+const PostCard = ({ post }: { post: SocialPost }) => {
+  const { data: session } = useSession();
+  const [liked, setLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(post._count.likes);
+  const [showComments, setShowComments] = useState(false);
+  const [newComment, setNewComment] = useState('');
+  const [comments, setComments] = useState<Comment[]>(post.comments);
+
+  useEffect(() => {
+    if (session?.user) {
+      setLiked(post.likes.some((like) => like.userId === session.user.id));
+    }
+  }, [post.likes, session?.user]);
+
+  const handleLike = async () => {
+    if (!session?.user) return;
+
+    try {
+      if (liked) {
+        await sociopeApi.unlikePost(post.id);
+        setLikesCount((prev) => prev - 1);
+      } else {
+        await sociopeApi.likePost(post.id);
+        setLikesCount((prev) => prev + 1);
+      }
+      setLiked(!liked);
+    } catch (error) {
+      console.error('Failed to toggle like:', error);
+    }
+  };
+
+  const handleComment = async () => {
+    if (!session?.user || !newComment.trim()) return;
+
+    try {
+      const comment = await sociopeApi.createComment(post.id, newComment);
+      setComments((prev) => [comment, ...prev]);
+      setNewComment('');
+    } catch (error) {
+      console.error('Failed to create comment:', error);
+    }
+  };
+
+  return (
+    <Card className="mb-4">
+      <CardContent className="p-4">
+        <div className="mb-4 flex items-center gap-3">
+          {post.user.image ? (
+            <img
+              src={post.user.image}
+              alt={post.user.name || ''}
+              className="h-8 w-8 rounded-full object-cover"
+            />
+          ) : (
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20">
+              <User className="h-4 w-4 text-primary" />
+            </div>
+          )}
+          <span className="font-medium">{post.user.name}</span>
+        </div>
+
+        <p className="mb-4 whitespace-pre-wrap">{post.content}</p>
+
+        {post.images.length > 0 && (
+          <div className="mb-4 grid grid-cols-2 gap-2">
+            {post.images.map((image, index) => (
+              <img
+                key={index}
+                src={image}
+                alt={`Post image ${index + 1}`}
+                className="aspect-square w-full rounded-lg object-cover"
+              />
+            ))}
+          </div>
+        )}
+
+        {post.products.map((product) => (
+          <div key={product.id} className="mb-4 rounded-lg bg-primary/5 p-3">
+            <div className="flex items-center gap-3">
+              {product.featuredImage && (
+                <img
+                  src={product.featuredImage.url}
+                  alt={product.title}
+                  className="h-12 w-12 rounded-md object-cover"
+                />
+              )}
+              <div className="flex-1">
+                <div className="font-medium">{product.title}</div>
+                <div className="text-sm text-primary">
+                  {product.priceRange.minVariantPrice.amount}{' '}
+                  {product.priceRange.minVariantPrice.currencyCode}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        <div className="flex gap-6 text-primary-dark/60 dark:text-primary-gray/60">
+          <button
+            onClick={handleLike}
+            className={`flex items-center gap-2 transition-colors ${liked ? 'text-primary' : 'hover:text-primary'}`}
+          >
+            <Heart className={`h-5 w-5 ${liked ? 'fill-current' : ''}`} />
+            {likesCount}
+          </button>
+          <button
+            onClick={() => setShowComments(!showComments)}
+            className="flex items-center gap-2 transition-colors hover:text-primary"
+          >
+            <MessageCircle className="h-5 w-5" />
+            {post._count.comments}
+          </button>
+          <button className="flex items-center gap-2 transition-colors hover:text-primary">
+            <Share2 className="h-5 w-5" />
+            Share
+          </button>
+        </div>
+
+        {showComments && (
+          <div className="mt-4 space-y-4 border-t border-primary/10 pt-4">
+            {session && (
+              <div className="flex gap-2">
+                <div className="flex-none">
+                  {session.user?.image ? (
+                    <img
+                      src={session.user.image}
+                      alt={session.user.name || 'User'}
+                      className="h-8 w-8 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20">
+                      <User className="h-4 w-4 text-primary" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <Textarea
+                    placeholder="Write a comment..."
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    className="min-h-[40px] resize-none bg-primary-gray/20 dark:bg-primary-dark/40"
+                  />
+                  <div className="mt-2 flex justify-end">
+                    <Button size="sm" onClick={handleComment} disabled={!newComment.trim()}>
+                      Comment
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              {comments.map((comment) => (
+                <div key={comment.id} className="flex gap-2">
+                  <div className="flex-none">
+                    {comment.user.image ? (
+                      <img
+                        src={comment.user.image}
+                        alt={comment.user.name || ''}
+                        className="h-8 w-8 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20">
+                        <User className="h-4 w-4 text-primary" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="rounded-lg bg-primary-gray/10 p-3 dark:bg-primary-dark/20">
+                      <div className="font-medium">{comment.user.name}</div>
+                      <p className="mt-1 text-sm">{comment.content}</p>
+                    </div>
+                    <div className="mt-1 text-xs text-primary-dark/40 dark:text-primary-gray/40">
+                      {new Date(comment.createdAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+const SocialFeed = () => {
+  const [posts, setPosts] = useState<SocialPost[]>([]);
+  const [page, setPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const { ref, inView } = useInView();
+
+  const fetchPosts = async (pageNum: number) => {
+    if (isLoading) return;
+
+    setIsLoading(true);
+    try {
+      const newPosts = await sociopeApi.fetchPosts({ page: pageNum });
+      if (newPosts.length === 0) {
+        setHasMore(false);
+      } else {
+        setPosts((prev) => (pageNum === 1 ? newPosts : [...prev, ...newPosts]));
+        setPage(pageNum);
+      }
+    } catch (error) {
+      console.error('Failed to fetch posts:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPosts(1);
+  }, []);
+
+  useEffect(() => {
+    if (inView && hasMore && !isLoading) {
+      fetchPosts(page + 1);
+    }
+  }, [inView, hasMore, isLoading, page]);
+
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-6">
+      <CreatePost />
+      <div className="space-y-4">
+        {posts.length === 0 && !isLoading ? (
+          <div className="py-8 text-center text-gray-500 dark:text-gray-400">
+            No posts yet. Be the first to share something!
+          </div>
+        ) : (
+          posts.map((post) => <PostCard key={post.id} post={post} />)
+        )}
+        {isLoading && (
+          <div className="flex justify-center p-4">
+            <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary"></div>
+          </div>
+        )}
+        <div ref={ref} className="h-10" />
+      </div>
+    </div>
+  );
+};
+
+export default SocialFeed;
+
+
+# Filename: ./components/sociope/product-picker.tsx
+# Path: /Users/admin/gp/commerce/./components/sociope/product-picker.tsx
+
+// File: components/sociope/product-picker.tsx
+import { Input } from '@/components/ui/input';
+import { useDebounce } from '@/hooks/use-debounce';
+import { sociopeApi } from '@/lib/sociope/api';
+import { Search, X } from 'lucide-react';
+import React, { useCallback, useState } from 'react';
+
+interface Product {
+  id: string;
+  title: string;
+  featuredImage: {
+    url: string;
+    altText: string;
+  };
+  priceRange: {
+    minVariantPrice: {
+      amount: string;
+      currencyCode: string;
+    };
+  };
+}
+
+interface ProductPickerProps {
+  onSelect: (products: Product[]) => void;
+  selectedProducts: Product[];
+  maxProducts?: number;
+}
+
+export function ProductPicker({
+  onSelect,
+  selectedProducts = [],
+  maxProducts = 4
+}: ProductPickerProps) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Product[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const debouncedQuery = useDebounce(query, 300);
+
+  const searchProducts = useCallback(async (searchQuery: string) => {
+    if (!searchQuery.trim()) {
+      setResults([]);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const products = await sociopeApi.searchProducts(searchQuery);
+      setResults(products);
+    } catch (error) {
+      console.error('Failed to search products:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    searchProducts(debouncedQuery);
+  }, [debouncedQuery, searchProducts]);
+
+  const handleSelect = (product: Product) => {
+    if (selectedProducts.length < maxProducts) {
+      onSelect([...selectedProducts, product]);
+    }
+  };
+
+  const handleRemove = (productId: string) => {
+    onSelect(selectedProducts.filter((p) => p.id !== productId));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="relative">
+        <Search className="absolute left-3 top-2.5 h-5 w-5 text-primary-dark/40" />
+        <Input
+          placeholder="Search products..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="pl-10"
+        />
+      </div>
+
+      {query && (
+        <div className="rounded-lg border border-primary/20 bg-white p-2 shadow-lg dark:bg-primary-dark">
+          {isLoading ? (
+            <div className="p-4 text-center">Loading...</div>
+          ) : results.length === 0 ? (
+            <div className="p-4 text-center text-primary-dark/60">No products found</div>
+          ) : (
+            <div className="max-h-64 space-y-2 overflow-auto">
+              {results.map((product) => (
+                <button
+                  key={product.id}
+                  onClick={() => handleSelect(product)}
+                  disabled={selectedProducts.some((p) => p.id === product.id)}
+                  className="w-full rounded-lg p-2 text-left hover:bg-primary/5 disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={product.featuredImage?.url || '/api/placeholder/48/48'}
+                      alt={product.title}
+                      className="h-12 w-12 rounded-md object-cover"
+                    />
+                    <div>
+                      <div className="font-medium">{product.title}</div>
+                      <div className="text-sm text-primary">
+                        {product.priceRange.minVariantPrice.amount}{' '}
+                        {product.priceRange.minVariantPrice.currencyCode}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {selectedProducts.length > 0 && (
+        <div className="space-y-2">
+          <div className="font-medium">Selected Products</div>
+          <div className="grid gap-2">
+            {selectedProducts.map((product) => (
+              <div
+                key={product.id}
+                className="flex items-center justify-between rounded-lg border border-primary/20 p-2"
+              >
+                <div className="flex items-center gap-3">
+                  <img
+                    src={product.featuredImage?.url || '/api/placeholder/32/32'}
+                    alt={product.title}
+                    className="h-8 w-8 rounded-md object-cover"
+                  />
+                  <span className="font-medium">{product.title}</span>
+                </div>
+                <button
+                  onClick={() => handleRemove(product.id)}
+                  className="text-primary-dark/60 hover:text-primary"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 # Filename: ./components/logo-horizontal.tsx
 # Path: /Users/admin/gp/commerce/./components/logo-horizontal.tsx
 
@@ -1175,6 +3926,603 @@ export default function LogoSquare({ size }: { size?: 'sm' | undefined }) {
         'h-[28px] w-[28px]': size === 'sm' // Increased from 10px to 28px
       })}
     />
+  );
+}
+
+
+# Filename: ./components/auth/auth-forms.tsx
+# Path: /Users/admin/gp/commerce/./components/auth/auth-forms.tsx
+
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Button, Input, Link } from '@nextui-org/react';
+import { AlertCircle, CheckCircle2, Info, Loader2, Lock, Mail, User } from 'lucide-react';
+import { signIn } from 'next-auth/react';
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import * as z from 'zod';
+
+// Schema definitions remain the same
+const signInSchema = z.object({
+  email: z.string().email({ message: 'Please enter a valid email address' }),
+  password: z.string().min(6, { message: 'Password must be at least 6 characters' })
+});
+
+const registerSchema = z
+  .object({
+    name: z.string().min(2, { message: 'Name must be at least 2 characters' }),
+    email: z.string().email({ message: 'Please enter a valid email address' }),
+    password: z
+      .string()
+      .min(6, { message: 'Password must be at least 6 characters' })
+      .regex(/[A-Z]/, { message: 'Password must contain at least one uppercase letter' })
+      .regex(/[0-9]/, { message: 'Password must contain at least one number' }),
+    confirmPassword: z.string()
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ['confirmPassword']
+  });
+
+// Common styles object for inputs
+const inputStyles = {
+  base: 'py-0 my-2',
+  label: 'text-sm font-medium text-neutral-700 dark:text-neutral-300 pb-1.5',
+  mainWrapper: [
+    'h-12',
+    'bg-white dark:bg-neutral-900',
+    'border border-neutral-200 dark:border-neutral-800',
+    'hover:border-neutral-400 dark:hover:border-neutral-600',
+    'data-[focused=true]:border-primary-500 dark:data-[focused=true]:border-primary-400',
+    'rounded-lg',
+    'transition-colors'
+  ].join(' '),
+  innerWrapper: 'bg-transparent',
+  input: [
+    'text-base',
+    'text-neutral-900 dark:text-neutral-100',
+    'placeholder:text-neutral-500 dark:placeholder:text-neutral-400',
+    'font-normal'
+  ].join(' '),
+  inputWrapper: 'h-full shadow-none bg-transparent',
+  errorMessage: 'text-xs font-medium text-danger-500 mt-1'
+};
+
+interface AuthFormProps {
+  onClose: () => void;
+}
+
+export function SignInForm({ onClose }: AuthFormProps) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [generalError, setGeneralError] = useState<string | null>(null);
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors }
+  } = useForm<z.infer<typeof signInSchema>>({
+    resolver: zodResolver(signInSchema),
+    mode: 'onChange'
+  });
+
+  async function onSubmit(values: z.infer<typeof signInSchema>) {
+    setIsLoading(true);
+    setGeneralError(null);
+
+    try {
+      const result = await signIn('credentials', {
+        email: values.email,
+        password: values.password,
+        redirect: false
+      });
+
+      if (result?.error) {
+        setGeneralError('Invalid email or password');
+        return;
+      }
+
+      onClose();
+    } catch (error) {
+      console.error('Sign in error:', error);
+      setGeneralError('An unexpected error occurred');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-8 px-1">
+      {generalError && (
+        <div className="bg-danger-50/50 text-danger-600 dark:bg-danger-900/20 dark:text-danger-400 flex items-center gap-2 rounded-lg p-4 text-sm backdrop-blur-sm">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{generalError}</span>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-4">
+        <div className="mb-6 flex w-full flex-wrap gap-4 md:mb-0 md:flex-nowrap">
+          <Input
+            {...register('email')}
+            type="email"
+            label="Email"
+            labelPlacement="outside"
+            placeholder="Enter your email"
+            description="We'll never share your email with anyone else."
+            errorMessage={errors.email?.message}
+            isInvalid={!!errors.email}
+            classNames={inputStyles}
+            variant="bordered"
+          />
+
+          <Input
+            {...register('password')}
+            type="password"
+            label="Password"
+            labelPlacement="outside"
+            defaultValue="junior@nextui.org"
+            startContent={<Lock className="text-default-400 h-4 w-4" />}
+            errorMessage={errors.password?.message}
+            isInvalid={!!errors.password}
+            classNames={inputStyles}
+            variant="bordered"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <Link
+          href="/auth/forgot-password"
+          className="text-sm font-medium text-primary hover:opacity-80"
+        >
+          Forgot password?
+        </Link>
+      </div>
+
+      <Button
+        type="submit"
+        isLoading={isLoading}
+        spinner={<Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        className="hover:bg-primary-500 h-12 bg-primary font-medium tracking-wide shadow-lg shadow-primary/20 transition-all hover:scale-[1.01] hover:shadow-xl hover:shadow-primary/30"
+        fullWidth
+      >
+        Sign In
+      </Button>
+    </form>
+  );
+}
+
+export function RegisterForm({ onClose }: AuthFormProps) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [generalError, setGeneralError] = useState<string | null>(null);
+
+  const {
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors }
+  } = useForm<z.infer<typeof registerSchema>>({
+    resolver: zodResolver(registerSchema),
+    mode: 'onChange'
+  });
+
+  const password = watch('password');
+  const passwordRequirements = [
+    { label: 'At least 6 characters', valid: password?.length >= 6 },
+    { label: 'Contains uppercase letter', valid: /[A-Z]/.test(password || '') },
+    { label: 'Contains number', valid: /[0-9]/.test(password || '') }
+  ];
+
+  async function onSubmit(values: z.infer<typeof registerSchema>) {
+    setIsLoading(true);
+    setGeneralError(null);
+
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: values.name,
+          email: values.email,
+          password: values.password
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Registration failed');
+      }
+
+      await signIn('credentials', {
+        email: values.email,
+        password: values.password,
+        redirect: false
+      });
+
+      onClose();
+    } catch (error) {
+      console.error('Registration error:', error);
+      setGeneralError('Registration failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-8 px-1">
+      {generalError && (
+        <div className="bg-danger-50/50 text-danger-600 dark:bg-danger-900/20 dark:text-danger-400 flex items-center gap-2 rounded-lg p-4 text-sm backdrop-blur-sm">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{generalError}</span>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-6">
+        <Input
+          {...register('name')}
+          type="text"
+          label="Name"
+          labelPlacement="outside"
+          placeholder="Enter your name"
+          startContent={<User className="text-default-400 h-4 w-4" />}
+          errorMessage={errors.name?.message}
+          isInvalid={!!errors.name}
+          classNames={inputStyles}
+          variant="bordered"
+        />
+
+        <Input
+          {...register('email')}
+          type="email"
+          label="Email"
+          labelPlacement="outside"
+          placeholder="Enter your email"
+          startContent={<Mail className="text-default-400 h-4 w-4" />}
+          errorMessage={errors.email?.message}
+          isInvalid={!!errors.email}
+          classNames={inputStyles}
+          variant="bordered"
+        />
+
+        <div className="space-y-3">
+          <Input
+            {...register('password')}
+            type="password"
+            label="Password"
+            labelPlacement="outside"
+            placeholder="Create a password"
+            startContent={<Lock className="text-default-400 h-4 w-4" />}
+            errorMessage={errors.password?.message}
+            isInvalid={!!errors.password}
+            classNames={inputStyles}
+            variant="bordered"
+          />
+
+          <div className="border-default-200/50 bg-default-100/50 dark:border-default-800/50 dark:bg-default-900/50 space-y-2 rounded-lg border p-4 backdrop-blur-sm">
+            <div className="text-default-700 dark:text-default-300 text-xs font-medium">
+              Password Requirements:
+            </div>
+            <div className="grid gap-2">
+              {passwordRequirements.map((req, index) => (
+                <div key={index} className="flex items-center gap-2 text-xs">
+                  {req.valid ? (
+                    <CheckCircle2 className="text-success h-3.5 w-3.5" />
+                  ) : (
+                    <Info className="text-default-400 h-3.5 w-3.5" />
+                  )}
+                  <span className={req.valid ? 'text-success' : 'text-default-500'}>
+                    {req.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <Input
+          {...register('confirmPassword')}
+          type="password"
+          label="Confirm Password"
+          labelPlacement="outside"
+          placeholder="Confirm your password"
+          startContent={<Lock className="text-default-400 h-4 w-4" />}
+          errorMessage={errors.confirmPassword?.message}
+          isInvalid={!!errors.confirmPassword}
+          classNames={inputStyles}
+          variant="bordered"
+        />
+      </div>
+
+      <Button
+        type="submit"
+        isLoading={isLoading}
+        spinner={<Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        className="hover:bg-primary-500 h-12 bg-primary font-medium tracking-wide shadow-lg shadow-primary/20 transition-all hover:scale-[1.01] hover:shadow-xl hover:shadow-primary/30"
+        fullWidth
+      >
+        Create Account
+      </Button>
+    </form>
+  );
+}
+
+
+# Filename: ./components/auth/auth-modal.tsx
+# Path: /Users/admin/gp/commerce/./components/auth/auth-modal.tsx
+
+// File: components/auth/auth-modal.tsx
+'use client';
+
+import { Button, Chip, Modal, ModalBody, ModalContent, Tab, Tabs } from '@nextui-org/react';
+import { motion } from 'framer-motion';
+import { signIn } from 'next-auth/react';
+import { useState } from 'react';
+import { FaShopify } from 'react-icons/fa';
+import { RegisterForm, SignInForm } from './auth-forms';
+
+interface AuthModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  defaultTab?: 'sign-in' | 'register';
+}
+
+export function AuthModal({ isOpen, onClose, defaultTab = 'sign-in' }: AuthModalProps) {
+  const [selectedTab, setSelectedTab] = useState<'sign-in' | 'register'>(defaultTab);
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="2xl"
+      placement="center"
+      classNames={{
+        base: 'bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md backdrop-saturate-150 border border-white/20 dark:border-neutral-800/20 shadow-xl',
+        backdrop: 'bg-neutral-900/50 backdrop-blur-sm backdrop-saturate-150',
+        body: 'p-0',
+        closeButton: 'hover:bg-white/10 active:bg-white/20'
+      }}
+    >
+      <ModalContent>
+        {(onClose) => (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <ModalBody>
+              <div className="flex flex-col md:flex-row">
+                {/* Left side - Branding/Image */}
+                <div className="relative hidden md:flex md:w-1/2">
+                  <div className="absolute inset-0 rounded-l-lg bg-gradient-to-br from-primary/90 to-primary-dark/90 backdrop-blur-sm" />
+                  <div className="relative z-10 flex h-full flex-col justify-between p-8 text-white">
+                    <div className="rounded-lg bg-white/5 p-6 backdrop-blur-sm">
+                      <h2 className="mb-4 text-2xl font-bold">Welcome to Gemspe</h2>
+                      <p className="text-sm opacity-90">
+                        Join our community of shoppers and discover unique products.
+                      </p>
+                    </div>
+                    <div className="space-y-4 rounded-lg bg-white/5 p-6 backdrop-blur-sm">
+                      <div className="flex flex-col gap-2">
+                        {['Smart Shopping', 'Community Driven', 'Exclusive Deals'].map(
+                          (feature) => (
+                            <div key={feature} className="flex items-center gap-2">
+                              <Chip
+                                size="sm"
+                                variant="flat"
+                                classNames={{
+                                  base: 'bg-white/20 backdrop-blur-md border-white/30',
+                                  content: 'text-white font-medium'
+                                }}
+                              >
+                                {feature}
+                              </Chip>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right side - Auth Forms */}
+                <div className="bg-white/50 p-6 backdrop-blur-md dark:bg-neutral-900/50 md:w-1/2">
+                  <div className="mb-6 md:hidden">
+                    <h2 className="text-xl font-bold">Welcome to Gemspe</h2>
+                    <p className="text-sm text-neutral-500">
+                      Sign in to your account or create a new one.
+                    </p>
+                  </div>
+
+                  <Tabs
+                    selectedKey={selectedTab}
+                    onSelectionChange={(key) => setSelectedTab(key as 'sign-in' | 'register')}
+                    variant="underlined"
+                    classNames={{
+                      tab: 'h-12',
+                      tabList: 'gap-6',
+                      cursor: 'bg-primary',
+                      tabContent: 'group-data-[selected=true]:text-primary'
+                    }}
+                    aria-label="Auth options"
+                  >
+                    <Tab
+                      key="sign-in"
+                      title={
+                        <div className="flex flex-col gap-1">
+                          <span>Sign In</span>
+                          <span className="text-xs text-neutral-500 group-data-[selected=true]:text-primary">
+                            Already have an account?
+                          </span>
+                        </div>
+                      }
+                    >
+                      <motion.div
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="py-4"
+                      >
+                        <SignInForm onClose={onClose} />
+                      </motion.div>
+                    </Tab>
+                    <Tab
+                      key="register"
+                      title={
+                        <div className="flex flex-col gap-1">
+                          <span>Register</span>
+                          <span className="text-xs text-neutral-500 group-data-[selected=true]:text-primary">
+                            Create a new account
+                          </span>
+                        </div>
+                      }
+                    >
+                      <motion.div
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="py-4"
+                      >
+                        <RegisterForm onClose={onClose} />
+                      </motion.div>
+                    </Tab>
+                  </Tabs>
+
+                  <div className="relative my-8">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-neutral-200 dark:border-neutral-700"></div>
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="bg-white/50 px-4 text-neutral-600 backdrop-blur-sm dark:bg-neutral-900/50 dark:text-neutral-400">
+                        Or continue with
+                      </span>
+                    </div>
+                  </div>
+
+                  <Button
+                    startContent={<FaShopify className="text-xl" />}
+                    variant="bordered"
+                    onPress={() => signIn('shopify')}
+                    className="h-12 w-full bg-white/50 backdrop-blur-sm dark:bg-neutral-800/50"
+                    classNames={{
+                      base: 'border border-neutral-200 dark:border-neutral-700 transition-all hover:scale-[1.02] hover:bg-white/80 dark:hover:bg-neutral-800/80'
+                    }}
+                  >
+                    Continue with Shopify
+                  </Button>
+                </div>
+              </div>
+            </ModalBody>
+          </motion.div>
+        )}
+      </ModalContent>
+    </Modal>
+  );
+}
+
+
+# Filename: ./components/auth/user-menu.tsx
+# Path: /Users/admin/gp/commerce/./components/auth/user-menu.tsx
+
+// File: components/auth/user-menu.tsx
+'use client';
+
+import {
+  Avatar,
+  Button,
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownTrigger
+} from '@nextui-org/react';
+import { Heart, LogOut, Settings, ShoppingBag, User } from 'lucide-react';
+import { signOut, useSession } from 'next-auth/react';
+import { useState } from 'react';
+import { AuthModal } from './auth-modal';
+
+export function UserMenu() {
+  const { data: session } = useSession();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  if (!session) {
+    return (
+      <>
+        <Button
+          variant="light"
+          onPress={() => setShowAuthModal(true)}
+          startContent={<User className="h-5 w-5" />}
+        ></Button>
+        <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
+      </>
+    );
+  }
+
+  return (
+    <Dropdown placement="bottom-end">
+      <DropdownTrigger>
+        <Avatar
+          isBordered
+          as="button"
+          className="transition-transform"
+          src={session.user?.image || undefined}
+          name={session.user?.name || 'User'}
+          size="sm"
+        />
+      </DropdownTrigger>
+      <DropdownMenu aria-label="User actions">
+        <DropdownItem key="profile" className="h-14 gap-2">
+          <p className="font-semibold">{session.user?.name}</p>
+          <p className="text-default-500 text-sm">{session.user?.email}</p>
+        </DropdownItem>
+        <DropdownItem key="orders" startContent={<ShoppingBag className="h-4 w-4" />}>
+          Orders
+        </DropdownItem>
+        <DropdownItem key="wishlist" startContent={<Heart className="h-4 w-4" />}>
+          Wishlist
+        </DropdownItem>
+        <DropdownItem key="settings" startContent={<Settings className="h-4 w-4" />}>
+          Settings
+        </DropdownItem>
+        <DropdownItem
+          key="logout"
+          color="danger"
+          startContent={<LogOut className="h-4 w-4" />}
+          onPress={() => signOut()}
+        >
+          Log Out
+        </DropdownItem>
+      </DropdownMenu>
+    </Dropdown>
+  );
+}
+
+
+# Filename: ./components/auth/auth-button.tsx
+# Path: /Users/admin/gp/commerce/./components/auth/auth-button.tsx
+
+// File: components/auth/auth-button.tsx
+'use client';
+
+import { Button } from '@/components/ui/button';
+import { signOut, useSession } from 'next-auth/react';
+import { useState } from 'react';
+import { AuthModal } from './auth-modal';
+
+export function AuthButton() {
+  const { data: session } = useSession();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  if (session) {
+    return (
+      <Button variant="ghost" onClick={() => signOut()}>
+        Sign Out
+      </Button>
+    );
+  }
+
+  return (
+    <>
+      <Button variant="ghost" onClick={() => setShowAuthModal(true)}>
+        Sign In
+      </Button>
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
+    </>
   );
 }
 
@@ -1507,6 +4855,8 @@ export default function MobileMenu({ menu }: { menu: Menu[] }) {
 # Filename: ./components/layout/navbar/index.tsx
 # Path: /Users/admin/gp/commerce/./components/layout/navbar/index.tsx
 
+// File: components/layout/navbar/index.tsx
+import { UserMenu } from '@/components/auth/user-menu';
 import CartModal from 'components/cart/modal';
 import LogoHorizontal from 'components/logo-horizontal';
 import { getMenu } from 'lib/shopify';
@@ -1522,10 +4872,10 @@ export async function Navbar() {
   const menu = await getMenu('next-js-frontend-header-menu');
 
   return (
-    <nav className="bg-primary-dark relative flex items-center justify-between shadow-md">
+    <nav className="relative flex items-center justify-between bg-primary-dark shadow-md">
       <div className="flex w-full flex-col">
         {/* Upper Nav Section - Optional Announcement or Secondary Nav */}
-        <div className="bg-primary/90 text-primary-white hidden w-full px-6 py-1 text-center text-sm md:block">
+        <div className="hidden w-full bg-primary/90 px-6 py-1 text-center text-sm text-primary-white md:block">
           Free shipping on orders over $50
         </div>
 
@@ -1546,7 +4896,7 @@ export async function Navbar() {
                 prefetch={true}
                 className="mr-2 flex w-full items-center justify-center md:w-auto lg:mr-6"
               >
-                <div className="text-primary-white ml-2 flex-none text-sm font-medium uppercase md:hidden lg:block">
+                <div className="ml-2 flex-none text-sm font-medium uppercase text-primary-white md:hidden lg:block">
                   <LogoHorizontal />
                 </div>
               </Link>
@@ -1558,7 +4908,7 @@ export async function Navbar() {
                       <Link
                         href={item.path}
                         prefetch={true}
-                        className="text-primary-gray hover:text-primary-light dark:text-primary-gray/90 dark:hover:text-primary-light transition-colors duration-200 hover:underline hover:underline-offset-4"
+                        className="text-primary-gray transition-colors duration-200 hover:text-primary-light hover:underline hover:underline-offset-4 dark:text-primary-gray/90 dark:hover:text-primary-light"
                       >
                         {item.title}
                       </Link>
@@ -1578,6 +4928,9 @@ export async function Navbar() {
             {/* Cart */}
             <div className="flex justify-end md:w-1/3">
               <CartModal />
+              <div className="border-l border-primary-gray/20 pl-4">
+                <UserMenu />
+              </div>
             </div>
           </div>
         </div>
@@ -2040,27 +5393,51 @@ export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
 }
 
 
-# Filename: ./components/providers/providers.tsx
-# Path: /Users/admin/gp/commerce/./components/providers/providers.tsx
+# Filename: ./components/providers/nextui-provider.tsx
+# Path: /Users/admin/gp/commerce/./components/providers/nextui-provider.tsx
 
-// components/providers/providers.tsx
+// File: components/providers/nextui-provider.tsx
+'use client';
 
+import { NextUIProvider } from '@nextui-org/react';
+import { useRouter } from 'next/navigation';
+import { ReactNode } from 'react';
+
+export function NextUIClientProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
+
+  return <NextUIProvider navigate={router.push}>{children}</NextUIProvider>;
+}
+
+
+# Filename: ./components/providers/auth-provider.tsx
+# Path: /Users/admin/gp/commerce/./components/providers/auth-provider.tsx
+
+// File: components/providers/auth-provider.tsx
 'use client';
 
 import { SessionProvider } from 'next-auth/react';
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  return <SessionProvider>{children}</SessionProvider>;
+}
+
+
+# Filename: ./components/providers/providers.tsx
+# Path: /Users/admin/gp/commerce/./components/providers/providers.tsx
+
+// File: components/providers/providers.tsx
+'use client';
+
+import { ThemeProvider } from 'next-themes';
 import { type ThemeProviderProps } from 'next-themes/dist/types';
-import { ThemeProvider } from './theme-provider';
 
 interface ProvidersProps extends ThemeProviderProps {
   children: React.ReactNode;
 }
 
 export function Providers({ children, ...themeProps }: ProvidersProps) {
-  return (
-    <SessionProvider>
-      <ThemeProvider {...themeProps}>{children}</ThemeProvider>
-    </SessionProvider>
-  );
+  return <ThemeProvider {...themeProps}>{children}</ThemeProvider>;
 }
 
 
@@ -2497,95 +5874,60 @@ export default function LogoIconhorizontal(props: React.ComponentProps<'svg'>) {
     <svg
       xmlns="http://www.w3.org/2000/svg"
       aria-label={`${process.env.SITE_NAME} logo`}
-      viewBox="0 0 798.11 213.14"
+      viewBox="0 0 459.77 141.22"
       {...props}
-      className={clsx('h-24 w-full', props.className)}
+      className={clsx('w-full transition-transform duration-300 hover:scale-102', props.className)}
     >
-      {/* Leaf sections */}
-      <path
-        className="fill-[#88BC85]"
-        d="M490.33,171.46c-28.4,6.95-56.61,14.54-85.22,21.35c-1.36,0.21-2.81,0.32-4.16,0.55l-222.41-8.76
-        c-2.43-0.22-4.8-0.43-7.28-0.55c-24.17-4.02-50.47-5.73-73.79-10.4c10.17-0.81,20.43-1.41,30.62-2.21L490.33,171.46z"
-      />
-      <path
-        className="fill-[#2A7138]"
-        d="M528.79,179.68c-72.74,36.22-223.95,30.62-317.38,26.76L0.3,184.6c-1.41-0.39,2.5-0.81,4.68-1.09
-        c44.2,2.3,130.27-1.21,166.29,0.55c2.47,0.12,4.84,0.32,7.28,0.55c20.45,2.36,145.42,24.13,153.42,24.06
-        c6.58-0.06,57.09-13.28,68.99-15.3c1.35-0.23,2.79-0.34,4.16-0.55C431.97,188.71,495.37,184.06,528.79,179.68z"
-      />
-      <path
-        className="fill-[#5E9A57]"
-        d="M545.42,169.82c-6.34,5.17-8.84,5.98-16.63,9.85c-33.42,4.38-96.82,9.03-123.68,13.14
-        c28.62-6.81,56.83-14.4,85.22-21.35c2.66-0.65,4.57-0.69,6.24-1.09C512.65,171.92,529.14,169.14,545.42,169.82z"
-      />
-      <path
-        className="fill-[#5F9958]"
-        d="M97.48,173.65c23.32,4.68,49.62,6.38,73.79,10.4c-36.02-1.76-122.09,1.76-166.29-0.55
-        C24.18,181.03,78.73,175.15,97.48,173.65z"
-      />
-      <path
-        className="fill-[#86BF83]"
-        d="M545.42,169.82c-16.28-0.69-32.76,2.09-48.85,0.55c20.13-4.92,45.98-7.68,61.84-20.8
-        C560.04,156.93,552.72,163.87,545.42,169.82z"
-      />
-      <path
-        className="fill-[#5F9A55]"
-        d="M400.95,193.36c-11.89,2.02-62.41,15.24-68.99,15.3c-8,0.07-132.97-21.7-153.42-24.06L400.95,193.36z"
-      />
+      {/* Text elements - only these should change color in dark mode */}
+      <g className="animate-fadeIn fill-[#424243] dark:fill-white">
+        <path d="M165,50.04c-1.22-4.07-6.07-1.1-5.78-3.84l14.45-6.76.49,9.14c7.27-15.71,31.55-14.8,38.55.96,13.85-22.31,42.89-10.04,42.89,8.21v39.52c0,2.34,4.81,4.51,7.22,4.35v1.91s-24.08,0-24.08,0v-1.92c3.01.47,7.23-2.52,7.23-3.38v-41.44c0-2.65-5.01-12.44-8.75-14.38-12.96-6.7-22.09,6.66-22.09,9.56v46.26c0,2.74,9.41,3.15,8.19,5.3h-25.06v-1.92c3.11.58,7.23-2.48,7.23-4.35v-41.44c0-10.02-18.79-24.96-28.67-7.47-4.96,8.78-4.04,47.7-1.23,50.86,1.65,1.85,3.88,2.45,6.28,2.4v1.92s-25.05,0-25.05,0v-1.92c3.33.26,8.19-1.58,8.19-5.31,0-7.2.66-44.05,0-46.26Z" />
+        <path d="M39.51,13.21c14.07-1.38,29,2.86,38.65,13.53l-9.05,12.21c.68-9.12-15.11-19.08-23.43-20.92C-3.1,7.28-1.34,88.44,45.06,101.55c33.46,9.45,44.51-24.84,35.96-35.96-3.26-4.24-20.06-6.49-2.44-7,1.74-.05,13.72.52,14.1,1.12,2.62,41.69-42.71,62.2-74.63,36.08C-14.97,68.77.33,17.07,39.51,13.21Z" />
+        <path d="M323.07,123.29c.34,1.21,4.66,4.83,7.72,4.8l.46,2.42-25.54-.49c-1.2-2.09,6.46-1.48,7.68-6.76,1.41-6.07,1.24-54.05.2-67.24,12.86-25.39,48.25-24.08,60-.62,16.68,33.28-22.35,66.12-50.54,39.94.67,7.64-.92,24.7,0,27.95ZM335.39,41.11c-5.15.49-10.22,3.83-13.06,8.08-3.27,72.77,57.15,62.29,44.4,16.95-3.47-12.35-17.65-26.33-31.34-25.03Z" />
+        <path d="M121.4,38.24c33.07-5.08,48.35,32.33,16.88,42.91-25.56,8.59-35.03-14.46-31.32-1.98,6.64,22.36,39.74,28.7,51.78,7.03,5.69-.35-16.19,29.17-45.13,14.27-28.31-14.57-20.97-57.81,7.79-62.23ZM124.33,40.14c-25.92,1.15-26.44,44.19,6.34,40.15,25.02-3.08,16.77-41.18-6.34-40.15Z" />
+        <path d="M406.44,37.99c3.19,0,6.46-.17,9.64,0,1.59.09,3.22,0,4.82,0,4.77,0,23.63,10.48,20.66,27.41-1.79,10.23-22.58,22.74-39.46,15.48-7.6-3.27-14.03-15.04-8.55-1.09,5.92,15.07,22.28,23.97,38.14,18.14,8.86-3.25,12.64-13.48,14.75-10.3-21.18,33.66-73.03,13.35-63.14-26.52,3.33-13.42,18.17-23.12,23.14-23.12ZM410.59,40.14c-25.94,1.2-25.88,44.11,6.34,40.15,25.54-3.14,16.88-41.22-6.34-40.15Z" />
+        <path d="M264.27,79.92h1.92c4.77,33.75,45.68,24.17,32.23,3.44-6.48-9.98-46.16-15.62-29.32-38.13,7.88-10.53,24.18-7.89,34.69-3.86v15.42h-1.91c-3.37-21.28-29.68-19.51-30.55-7.58-1.19,16.31,40.17,16.24,36.25,40.29-3.76,23.05-43.31,13.65-43.31,7.77v-17.35Z" />
+      </g>
 
-      {/* Top decorative elements */}
-      <path
-        className="fill-[#2C783B]"
-        d="M754.6,1.42c-11.5,12.42-19.73,11.58-31.37,0C728.36-0.47,749.49-0.48,754.6,1.42z"
-      />
-      <path
-        className="fill-[#539745]"
-        d="M754.6,1.42c1.69,0.63,16.77,12.37,16.8,13.44c-4.23,1.81-19.14,1.08-21.13,2.96
-        c-2.35,2.22-3.8,31.29-12.48,37.37c-11.31-10.85-20.36-27.49-30.09-39.96c-0.07-1.8,13.51-13.07,15.52-13.81
-        C734.88,13,743.1,13.84,754.6,1.42z"
-      />
-      <path
-        className="fill-[#28753A]"
-        d="M723,16.32c1.74-0.15,5.69-1.26,6.84,0.34c0.95,1.31,5.59,27.4,6.28,31.8
-        c-5.17-11.07-11.65-21.52-19.59-30.8C716.77,17.25,721.92,16.41,723,16.32z"
-      />
-      <polygon className="fill-[#2C783B]" points="716.53,17.66 730.41,14.87 736.01,47.78" />
-      <polyline
-        className="fill-[#2C783B]"
-        points="750.06,13.75 771.41,14.7 739.48,58.37 737.8,55.03"
-      />
+      {/* Leaf decorative elements with floating animation */}
+      <g className="animate-float">
+        <path
+          fill="#5e9955"
+          className="animate-float-delay-1"
+          d="M182.55,23.32c14.87,3.2,21.72,11.57,26.5,25.53-20.87-.95-29.31-23.97-26.5-25.53Z"
+        />
+        <polygon
+          fill="#2d793c"
+          className="animate-float-delay-2"
+          points="209.7 49.61 180.72 21.54 184.29 34.83 193.59 44.46 208.79 50.35 209.7 49.61"
+        />
+        <path
+          fill="#5e9955"
+          className="animate-float-delay-3"
+          d="M241.37,23.32c-.35,13.24-13.64,24.95-26.51,25.52,3.68-14.12,11.91-22.97,26.51-25.52Z"
+        />
+        <polygon
+          fill="#2d793c"
+          className="animate-float-delay-4"
+          points="214.31 49.61 243.29 21.54 239.72 34.83 230.42 44.46 215.23 50.35 214.31 49.61"
+        />
+      </g>
 
-      {/* Text elements */}
-      <g className="fill-[#414042] dark:fill-white">
+      {/* Top decorative elements with gentle pulse animation */}
+      <g className="animate-pulse-slow">
         <path
-          d="M116.79,158.54l-0.87-12.04C55.69,188.83-16.39,133.44,3.32,63.12c16.56-59.11,96.74-71.75,131.9-22.9
-          l-19.28,16.87C80.53,14.41,23.01,42.78,27.83,91.9c2.76,28.12,31.64,51.65,64.69,39.78c10.05-3.61,27.21-15.75,22.56-28.16H75.1
-          V78.59h67.92v79.95H116.79z"
+          fill="#2d793c"
+          d="M220.4.81c-6.51,7.04-11.17,6.56-17.77,0,2.9-1.07,14.87-1.08,17.77,0Z"
         />
         <path
-          d="M299.91,49.36l1.71,12.03c20.05-19.08,51.1-21.84,67.07,3.5c19.31-22.51,61.39-27.92,71.82,3.78
-          c4.93,14.97,3.04,69.59,2.98,89.87h-26.65c-2.31-18.13,1.96-58.21-0.82-70.54c-6.62-29.34-43.46-16.72-43.46,5.63v64.91h-26.65
-          V94.49c0-7.13-5.78-18.67-12.69-21.7c-17.6-7.71-32.02,9.44-32.02,19.12v66.63h-27.51V49.36H299.91z"
+          fill="#539644"
+          d="M220.4.81c.96.36,9.5,7.01,9.52,7.61-2.4,1.02-10.84.61-11.97,1.67-1.33,1.26-2.15,17.72-7.07,21.17-6.41-6.15-11.53-15.57-17.04-22.64-.04-1.02,7.65-7.4,8.79-7.82,6.59,6.56,11.25,7.04,17.77,0Z"
         />
         <path
-          d="M178.69,111.26c5.57,31.11,42.26,36.1,62.64,13.82l16.01,14.98c-59.01,59.32-136.7-14.83-94.41-71.21
-          c32.91-43.87,109.37-19.66,100.01,42.41H178.69z M179.55,93.2h56.74C232.33,61.07,184.66,61.57,179.55,93.2z"
+          fill="#29753a"
+          d="M202.5,9.24c.99-.08,3.22-.71,3.88.19.54.74,3.17,15.52,3.56,18.01-2.93-6.27-6.6-12.19-11.1-17.45.13-.23,3.05-.71,3.66-.76Z"
         />
-        <path
-          d="M497.04,47.04c14.73-0.95,34.56,3.58,45.58,13.92l-13.15,17.52c-37.27-23.02-56.42-0.76-42.01,9.43
-          c12.71,8.98,68.5,1.98,58.35,45.74c-8.51,36.71-68.08,32.61-90.71,12.44l12.48-18.5c36.39,24.68,65.91,6.69,50.56-6.74
-          c-11-9.62-52.87-4.37-59.21-31.06C452.8,63.99,473.31,48.56,497.04,47.04z"
-        />
-        <path
-          d="M586.19,49.36l0.87,12.9c44.2-39.53,103.14,1.43,89.41,57.61c-9.51,38.89-59.87,56.45-88.57,26.65l-1.28,0.43
-          v62.33h-26.65V49.36H586.19z M611.99,71.71c-14.63,0-40.48,32.37-15.66,56.07c25.19,24.06,64.7-1.49,53.69-34.77
-          c-3.49-10.54-17.71-21.3-23.41-21.3c-3.14,0-6.33-0.15-9.46,0C615.44,71.79,613.7,71.71,611.99,71.71z"
-        />
-        <path
-          d="M712.57,111.26c-5.21,2.94,22.35,50.65,62.64,13.82l15.15,14.98c-18.34,21.59-47.51,27.51-73.24,15.66
-          c-46.23-21.31-40.05-94.25,9.39-107.09l12.73,15.34l13.03-16.24c22.07,1.45,45.84,28.84,45.84,50.2v13.33H712.57z M713.43,93.2
-          h56.74C765.92,61.48,718.72,61.09,713.43,93.2z"
-        />
+        <polygon fill="#2d793c" points="198.84 10 206.7 8.42 209.87 27.07 198.84 10" />
+        <polyline fill="#2d793c" points="217.83 7.79 229.92 8.32 211.84 33.06 210.88 31.17" />
       </g>
     </svg>
   );
@@ -2684,6 +6026,11 @@ export default function LogoIcon(props: React.ComponentProps<'svg'>) {
     </svg>
   );
 }
+
+
+# Filename: ./components/icons/appicons.tsx
+# Path: /Users/admin/gp/commerce/./components/icons/appicons.tsx
+
 
 
 # Filename: ./components/HeroBanner/index.tsx
@@ -4397,6 +7744,29 @@ export async function Carousel() {
 }
 
 
+# Filename: ./hooks/use-debounce.ts
+# Path: /Users/admin/gp/commerce/./hooks/use-debounce.ts
+
+// File: hooks/use-debounce.ts
+import { useEffect, useState } from 'react';
+
+export function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
+
 # Filename: ./scripts/setup-db.ts
 # Path: /Users/admin/gp/commerce/./scripts/setup-db.ts
 
@@ -4464,6 +7834,344 @@ async function testConnection() {
 }
 
 testConnection();
+
+
+# Filename: ./lib/prisma.ts
+# Path: /Users/admin/gp/commerce/./lib/prisma.ts
+
+import { PrismaClient } from '@prisma/client';
+
+const globalForPrisma = global as unknown as {
+  prisma: PrismaClient | undefined;
+};
+
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error']
+  });
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+
+
+# Filename: ./lib/sociope/api.ts
+# Path: /Users/admin/gp/commerce/./lib/sociope/api.ts
+
+import type { Comment, CreatePostData, SocialPost } from './types';
+
+export const sociopeApi = {
+  async fetchPosts({ page = 1, limit = 10 } = {}): Promise<SocialPost[]> {
+    const response = await fetch(`/api/sociope/posts?page=${page}&limit=${limit}`);
+    if (!response.ok) throw new Error('Failed to fetch posts');
+    return response.json();
+  },
+
+  async createPost(data: CreatePostData): Promise<SocialPost> {
+    const response = await fetch('/api/sociope/posts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) throw new Error('Failed to create post');
+    return response.json();
+  },
+
+  // Likes
+  async likePost(postId: string) {
+    const response = await fetch('/api/sociope/likes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ postId })
+    });
+    if (!response.ok) throw new Error('Failed to like post');
+    return response.json();
+  },
+
+  async unlikePost(postId: string) {
+    const response = await fetch(`/api/sociope/likes?postId=${postId}`, {
+      method: 'DELETE'
+    });
+    if (!response.ok) throw new Error('Failed to unlike post');
+    return response.json();
+  },
+
+  // Comments
+  async createComment(postId: string, content: string): Promise<Comment> {
+    const response = await fetch('/api/sociope/comments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ postId, content })
+    });
+    if (!response.ok) throw new Error('Failed to create comment');
+    return response.json();
+  },
+
+  // Product Search
+  async searchProducts(query: string) {
+    const response = await fetch(`/api/sociope/products/search?q=${encodeURIComponent(query)}`);
+    if (!response.ok) throw new Error('Failed to search products');
+    return response.json();
+  }
+};
+
+
+# Filename: ./lib/sociope/types.ts
+# Path: /Users/admin/gp/commerce/./lib/sociope/types.ts
+
+// File: lib/sociope/types.ts
+export interface User {
+  id: string;
+  name: string | null;
+  image: string | null;
+}
+
+export interface Product {
+  id: string;
+  title: string;
+  featuredImage?: {
+    url: string;
+    altText: string;
+  };
+  priceRange: {
+    minVariantPrice: {
+      amount: string;
+      currencyCode: string;
+    };
+  };
+}
+
+export interface Comment {
+  id: string;
+  content: string;
+  createdAt: string;
+  user: {
+    name: string | null;
+    image: string | null;
+  };
+}
+
+export interface Like {
+  userId: string;
+}
+
+export interface SocialPost {
+  id: string;
+  content: string;
+  images: string[];
+  products: Product[];
+  user: User;
+  likes: Like[];
+  comments: Comment[];
+  createdAt: string;
+  _count: {
+    likes: number;
+    comments: number;
+  };
+}
+
+export interface CreatePostData {
+  content: string;
+  images?: string[];
+  productIds?: string[];
+}
+
+
+# Filename: ./lib/auth/shopify-provider.ts
+# Path: /Users/admin/gp/commerce/./lib/auth/shopify-provider.ts
+
+// File: lib/auth/shopify-provider.ts
+import { OAuthConfig, OAuthUserConfig } from 'next-auth/providers';
+
+export interface ShopifyProfile {
+  id: string;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+}
+
+export default function ShopifyProvider<P extends ShopifyProfile>(
+  options: OAuthUserConfig<P>
+): OAuthConfig<P> {
+  return {
+    id: 'shopify',
+    name: 'Shopify',
+    type: 'oauth',
+    authorization: {
+      url: `https://${options.storeDomain}/oauth/authorize`,
+      params: {
+        scope: 'read_customers write_customers',
+        response_type: 'code',
+        client_id: options.clientId
+      }
+    },
+    token: {
+      url: `https://${options.storeDomain}/oauth/token`,
+      async request({ client, params, checks }) {
+        const response = await client.oauthCallback(options.storeDomain, params, checks);
+        return { tokens: response };
+      }
+    },
+    userinfo: {
+      url: `https://${options.storeDomain}/api/2023-01/graphql.json`,
+      async request({ tokens, client }) {
+        const response = await client.userinfo(tokens.access_token);
+        return response;
+      }
+    },
+    profile(profile) {
+      return {
+        id: profile.id,
+        email: profile.email,
+        name: `${profile.firstName || ''} ${profile.lastName || ''}`.trim(),
+        image: null
+      };
+    },
+    style: {
+      logo: '/shopify-logo.svg',
+      logoDark: '/shopify-logo-dark.svg',
+      bg: '#fff',
+      text: '#000',
+      bgDark: '#000',
+      textDark: '#fff'
+    },
+    options
+  };
+}
+
+
+# Filename: ./lib/auth/config.ts
+# Path: /Users/admin/gp/commerce/./lib/auth/config.ts
+
+// File: lib/auth/config.ts
+import { prisma } from '@/lib/prisma';
+import { compare } from 'bcryptjs';
+import { NextAuthOptions } from 'next-auth';
+import CredentialsProvider from 'next-auth/providers/credentials';
+import ShopifyProvider from './shopify-provider';
+
+export const authConfig: NextAuthOptions = {
+  providers: [
+    CredentialsProvider({
+      name: 'credentials',
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' }
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          throw new Error('Please enter both email and password');
+        }
+
+        const user = await prisma.user.findUnique({
+          where: { email: credentials.email },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            password: true,
+            image: true,
+            role: true,
+            shopifyCustomerId: true
+          }
+        });
+
+        if (!user || !user.password) {
+          throw new Error('No user found with this email');
+        }
+
+        const isValid = await compare(credentials.password, user.password);
+
+        if (!isValid) {
+          throw new Error('Invalid password');
+        }
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          image: user.image,
+          role: user.role,
+          shopifyCustomerId: user.shopifyCustomerId
+        };
+      }
+    }),
+    ShopifyProvider({
+      clientId: process.env.SHOPIFY_CLIENT_ID!,
+      clientSecret: process.env.SHOPIFY_CLIENT_SECRET!,
+      storeDomain: process.env.SHOPIFY_STORE_DOMAIN!
+    })
+  ],
+  callbacks: {
+    async jwt({ token, user, account }) {
+      if (user) {
+        token.id = user.id;
+        token.role = user.role;
+        token.shopifyCustomerId = user.shopifyCustomerId;
+      }
+
+      // If it's a Shopify sign-in, update the token with Shopify data
+      if (account?.provider === 'shopify') {
+        token.shopifyCustomerId = account.providerAccountId;
+      }
+
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        session.user.id = token.id as string;
+        session.user.role = token.role as string;
+        session.user.shopifyCustomerId = token.shopifyCustomerId as string | undefined;
+      }
+      return session;
+    },
+    async signIn({ user, account, profile }) {
+      try {
+        if (account?.provider === 'shopify') {
+          const existingUser = await prisma.user.findUnique({
+            where: { email: user.email! }
+          });
+
+          if (existingUser) {
+            // Update existing user with Shopify data
+            await prisma.user.update({
+              where: { id: existingUser.id },
+              data: {
+                shopifyCustomerId: account.providerAccountId,
+                name: user.name || existingUser.name,
+                image: user.image || existingUser.image
+              }
+            });
+          } else {
+            // Create new user from Shopify data
+            await prisma.user.create({
+              data: {
+                email: user.email!,
+                name: user.name,
+                image: user.image,
+                shopifyCustomerId: account.providerAccountId,
+                role: 'USER'
+              }
+            });
+          }
+        }
+        return true;
+      } catch (error) {
+        console.error('SignIn error:', error);
+        return false;
+      }
+    }
+  },
+  pages: {
+    signIn: '/auth/signin',
+    error: '/auth/error'
+  },
+  session: {
+    strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60 // 30 days
+  },
+  secret: process.env.NEXTAUTH_SECRET,
+  debug: process.env.NODE_ENV === 'development'
+};
 
 
 # Filename: ./lib/type-guards.ts
@@ -6446,6 +10154,31 @@ export const validateEnvironmentVariables = () => {
 };
 
 
+# Filename: ./lib/image-utils.ts
+# Path: /Users/admin/gp/commerce/./lib/image-utils.ts
+
+// lib/image-utils.ts
+
+interface ImageGeneratorOptions {
+  type: 'avatar' | 'post';
+  seed?: string;
+  width?: number;
+  height?: number;
+}
+
+export function generateImageUrl({
+  type,
+  seed = 'default',
+  width = 400,
+  height = 400
+}: ImageGeneratorOptions): string {
+  if (type === 'avatar') {
+    return `https://picsum.photos/seed/${seed}-avatar/${width}/${height}`;
+  }
+  return `https://picsum.photos/seed/${seed}-post/${width}/${height}`;
+}
+
+
 # Filename: ./lib/constants.ts
 # Path: /Users/admin/gp/commerce/./lib/constants.ts
 
@@ -6485,15 +10218,31 @@ export const SHOPIFY_GRAPHQL_API_ENDPOINT = '/api/2023-01/graphql.json';
 # Filename: ./next.config.ts
 # Path: /Users/admin/gp/commerce/./next.config.ts
 
-export default {
+// next.config.ts
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   images: {
-    formats: ['image/avif', 'image/webp'],
     remotePatterns: [
       {
         protocol: 'https',
         hostname: 'cdn.shopify.com',
         pathname: '/s/files/**'
+      },
+      {
+        protocol: 'https',
+        hostname: 'picsum.photos',
+        pathname: '**'
+      },
+      {
+        protocol: 'https',
+        hostname: 'api.dicebear.com',
+        pathname: '**'
       }
-    ]
+    ],
+    dangerouslyAllowSVG: true,
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;"
   }
 };
+
+export default nextConfig;

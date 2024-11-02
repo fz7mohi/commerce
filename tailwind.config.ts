@@ -7,7 +7,6 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Modern Emerald Theme
         primary: {
           DEFAULT: '#3DA35D', // Emerald Green
           light: '#6DCB73', // Leaf Green
@@ -23,6 +22,10 @@ const config: Config = {
         fadeIn: {
           from: { opacity: '0', transform: 'translateY(10px)' },
           to: { opacity: '1', transform: 'translateY(0)' }
+        },
+        float: {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-5px)' }
         },
         marquee: {
           '0%': { transform: 'translateX(0%)' },
@@ -73,10 +76,19 @@ const config: Config = {
             transform: 'translateY(0)',
             animationTimingFunction: 'cubic-bezier(0, 0, 0.2, 1)'
           }
+        },
+        'pulse-slow': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.85' }
         }
       },
       animation: {
         fadeIn: 'fadeIn .3s ease-in-out',
+        float: 'float 3s ease-in-out infinite',
+        'float-delay-1': 'float 3s ease-in-out infinite 0.2s',
+        'float-delay-2': 'float 3s ease-in-out infinite 0.4s',
+        'float-delay-3': 'float 3s ease-in-out infinite 0.6s',
+        'float-delay-4': 'float 3s ease-in-out infinite 0.8s',
         carousel: 'marquee 60s linear infinite',
         blink: 'blink 1.4s both infinite',
         shake: 'shake 0.5s cubic-bezier(.36,.07,.19,.97) both',
@@ -87,7 +99,7 @@ const config: Config = {
         gradient: 'gradient 6s linear infinite',
         'spin-slow': 'spin-slow 3s linear infinite',
         'bounce-slow': 'bounce 3s ease-in-out infinite',
-        'pulse-slow': 'pulse 6s ease-in-out infinite'
+        'pulse-slow': 'pulse-slow 4s ease-in-out infinite'
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
